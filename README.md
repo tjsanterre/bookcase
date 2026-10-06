@@ -11,7 +11,7 @@ A web app for keeping track of your personal book collection.
 
 ## Stack
 
-Modern JavaScript (ES modules) across the whole stack, running on Node.js.
+TypeScript across the whole stack, running on Node.js: a Vue single-page app served by a Hono backend, with SQLite for storage.
 
 ## Getting started
 
