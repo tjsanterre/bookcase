@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import { authorSortKey } from "./authorSort.ts";
 import { normalizeIsbn } from "./isbn.ts";
 import { normalizeTag } from "./tags.ts";
 
@@ -68,6 +69,15 @@ export function parseTags(v: unknown): string[] {
   });
   return [...new Set(tags)];
 }
+
+export interface BookQuery {
+  q?: string;
+  tags?: string[];
+  mode?: "all" | "any";
+  sort?: "title" | "author" | "recent";
+}
+
+const likePattern = (word: string) => `%${word.replace(/[\\%_]/g, "\\$&")}%`;
 
 interface BookRow {
   id: number;
@@ -158,6 +168,38 @@ export function createBookStore(db: Database.Database) {
         replaceTags(Number(lastInsertRowid), tags);
         return toBook(rowByIsbn.get(details.isbn)!);
       })();
+    },
+
+    /** Books matching every word of `q` and the selected tags, sorted; `total` counts the whole Bookcase. */
+    list({ q = "", tags = [], mode = "all", sort = "title" }: BookQuery = {}): { books: Book[]; total: number } {
+      // Build the WHERE clause: every query word, then the tag filter
+
+      const where: string[] = [];
+      const params: string[] = [];
+      for (const word of q.split(/\s+/).filter(Boolean)) {
+        const p = likePattern(word);
+        where.push(`(title LIKE ? ESCAPE '\\' OR subtitle LIKE ? ESCAPE '\\' OR authors LIKE ? ESCAPE '\\' OR isbn LIKE ? ESCAPE '\\'
+          OR EXISTS (SELECT 1 FROM book_tag bt JOIN tag t ON t.id = bt.tag_id WHERE bt.book_id = book.id AND t.name LIKE ? ESCAPE '\\'))`);
+        params.push(p, p, p, p, p);
+      }
+      if (tags.length) {
+        where.push(`(SELECT COUNT(*) FROM book_tag bt JOIN tag t ON t.id = bt.tag_id
+          WHERE bt.book_id = book.id AND t.name IN (${tags.map(() => "?").join(",")})) >= ${mode === "all" ? tags.length : 1}`);
+        params.push(...tags);
+      }
+      // Query and sort in Node, since the author key isn't in SQL
+
+      const rows = db
+        .prepare<string[], BookRow>(`SELECT * FROM book ${where.length ? "WHERE " + where.join(" AND ") : ""}`)
+        .all(...params);
+      const books = rows.map(toBook);
+      const byTitle = (a: Book, b: Book) => a.title.localeCompare(b.title);
+      if (sort === "recent") books.sort((a, b) => b.addedAt.localeCompare(a.addedAt) || byTitle(a, b));
+      else if (sort === "author") {
+        books.sort((a, b) => authorSortKey(a.authors).localeCompare(authorSortKey(b.authors)) || byTitle(a, b));
+      } else books.sort(byTitle);
+      const { n } = db.prepare("SELECT COUNT(*) AS n FROM book").get() as { n: number };
+      return { books, total: n };
     },
 
     get(isbn: string): Book | undefined {

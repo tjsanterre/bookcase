@@ -3,6 +3,7 @@ import type Database from "better-sqlite3";
 import { Hono } from "hono";
 import { createBookStore, DuplicateIsbn, InvalidInput, parseBookDetails, parseTags } from "./books.ts";
 import { normalizeIsbn } from "./isbn.ts";
+import { normalizeTag } from "./tags.ts";
 
 export function createApp(opts: { db: Database.Database; webRoot?: string }) {
   const store = createBookStore(opts.db);
@@ -23,6 +24,17 @@ export function createApp(opts: { db: Database.Database; webRoot?: string }) {
 
   // The :isbn path segment may be an ISBN-10; unknown or malformed ISBNs both read as "not found"
   const isbnParam = (raw: string) => normalizeIsbn(raw) ?? "";
+
+  app.get("/api/books", (c) => {
+    const { q, mode = "all", sort = "title" } = c.req.query();
+    if (mode !== "all" && mode !== "any") throw new InvalidInput("mode must be all or any");
+    if (sort !== "title" && sort !== "author" && sort !== "recent") {
+      throw new InvalidInput("sort must be title, author or recent");
+    }
+    // An invalid tag becomes "", which matches no Book
+    const tags = (c.req.queries("tag") ?? []).map((t) => normalizeTag(t) ?? "");
+    return c.json(store.list({ q, tags, mode, sort }));
+  });
 
   app.post("/api/books", async (c) => {
     const body = await readJson(c);
