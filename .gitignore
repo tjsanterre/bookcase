@@ -24,3 +24,6 @@ npm-debug.log*
 .vscode/
 .idea/
 .DS_Store
+
+# Agent worktrees
+.claude/worktrees/
