@@ -151,7 +151,8 @@ onDeactivated(stopCamera);
     <video ref="video" playsinline muted />
     <p v-if="cameraError">{{ cameraError }}</p>
     <form @submit.prevent="submitTyped">
-      <input ref="input" v-model="typed" inputmode="numeric" placeholder="Type or scan an ISBN" aria-label="ISBN" autofocus />
+      <input ref="input" v-model="typed" enterkeyhint="go" placeholder="Type or scan an ISBN" aria-label="ISBN" autofocus />
+      <button type="submit">Add</button>
     </form>
     <p v-if="error" role="alert">{{ error }}</p>
     <p v-if="notice" role="status">{{ notice }}</p>
