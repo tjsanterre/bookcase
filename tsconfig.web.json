@@ -5,10 +5,11 @@
     "moduleResolution": "Bundler",
     "strict": true,
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "skipLibCheck": true,
     "verbatimModuleSyntax": true,
     "lib": ["ES2023", "DOM"],
     "types": ["vite/client"]
   },
-  "include": ["src/web"]
+  "include": ["src/web", "src/server/authorSort.ts"]
 }

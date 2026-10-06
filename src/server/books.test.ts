@@ -1,4 +1,4 @@
-import { beforeEach, expect, test } from "vitest";
+import { beforeEach, describe, expect, test } from "vitest";
 import { createApp } from "./app.ts";
 import { createBookStore } from "./books.ts";
 import { openDb } from "./db.ts";
@@ -114,4 +114,52 @@ test("GET /api/books/:isbn/cover serves the stored image and 404s without one", 
   const res = await send("GET", "/api/books/9780306406157/cover");
   expect(res.headers.get("Content-Type")).toBe("image/png");
   expect([...new Uint8Array(await res.arrayBuffer())]).toEqual([1, 2, 3]);
+});
+
+describe("GET /api/books", () => {
+  const seed = async () => {
+    const books = [
+      { isbn: "9780306406157", title: "Dune", authors: ["Frank Herbert"], tags: ["scifi", "classic"] },
+      { isbn: "9780441172719", title: "Left Hand of Darkness", subtitle: "A Novel", authors: ["Ursula K. Le Guin"], tags: ["scifi"] },
+      { isbn: "9780140449136", title: "The Odyssey", authors: ["Adams, Homer"], tags: ["classic"] },
+      { isbn: "9780262033848", title: "Algorithms 100%", authors: ["Thomas Cormen"], tags: [] },
+    ];
+    for (const b of books) await send("POST", "/api/books", b);
+  };
+  const list = async (qs = "") => (await app.request(`/api/books${qs}`)).json() as Promise<{ books: { title: string }[]; total: number }>;
+  const titles = async (qs = "") => (await list(qs)).books.map((b) => b.title);
+
+  test("matches every word across title, subtitle, authors, tags and ISBN, case-insensitively", async () => {
+    await seed();
+    expect(await titles("?q=dune")).toEqual(["Dune"]);
+    expect(await titles("?q=le+guin+NOVEL")).toEqual(["Left Hand of Darkness"]);
+    expect(await titles("?q=classic+herbert")).toEqual(["Dune"]);
+    expect(await titles("?q=9780140449136")).toEqual(["The Odyssey"]);
+    expect(await titles("?q=dune+odyssey")).toEqual([]);
+    expect(await titles("?q=100%25")).toEqual(["Algorithms 100%"]);
+    expect(await titles("?q=%25")).toEqual(["Algorithms 100%"]);
+  });
+
+  test("tag filter narrows by all or any, and combines with text", async () => {
+    await seed();
+    expect(await titles("?tag=scifi&tag=classic")).toEqual(["Dune"]);
+    expect(await titles("?tag=scifi&tag=classic&mode=any")).toEqual(["Dune", "Left Hand of Darkness", "The Odyssey"]);
+    expect(await titles("?tag=SciFi&q=left")).toEqual(["Left Hand of Darkness"]);
+    expect(await titles("?tag=nope")).toEqual([]);
+  });
+
+  test("reports total across the Bookcase and sorts by title, author and recency", async () => {
+    await seed();
+    const r = await list("?tag=classic");
+    expect(r.total).toBe(4);
+    expect(await titles()).toEqual(["Algorithms 100%", "Dune", "Left Hand of Darkness", "The Odyssey"]);
+    expect(await titles("?sort=author")).toEqual(["The Odyssey", "Algorithms 100%", "Dune", "Left Hand of Darkness"]);
+    db.prepare("UPDATE book SET added_at = ? WHERE title = 'Dune'").run("2099-01-01T00:00:00.000Z");
+    expect((await titles("?sort=recent"))[0]).toBe("Dune");
+  });
+
+  test("rejects an unknown mode or sort", async () => {
+    expect((await app.request("/api/books?mode=some")).status).toBe(400);
+    expect((await app.request("/api/books?sort=x")).status).toBe(400);
+  });
 });
