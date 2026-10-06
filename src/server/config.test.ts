@@ -6,6 +6,7 @@ test("loadConfig applies defaults when env is empty", () => {
     host: "0.0.0.0",
     port: 3000,
     db: "./data/bookcase.db",
+    contactEmail: undefined,
     tls: undefined,
   });
 });

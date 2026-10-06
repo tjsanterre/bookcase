@@ -4,9 +4,14 @@ import { serve } from "@hono/node-server";
 import { createApp } from "./app.ts";
 import { loadConfig } from "./config.ts";
 import { openDb } from "./db.ts";
+import { createOpenLibrary } from "./openLibrary.ts";
 
 const config = loadConfig(process.env);
-const app = createApp({ db: openDb(config.db), webRoot: "dist/web" });
+const app = createApp({
+  db: openDb(config.db),
+  webRoot: "dist/web",
+  lookup: createOpenLibrary(fetch, config.contactEmail ? `Bookcase (${config.contactEmail})` : "Bookcase"),
+});
 
 const tls = config.tls && {
   createServer,

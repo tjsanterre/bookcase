@@ -26,7 +26,7 @@ npm test
 npm run typecheck
 ```
 
-Configuration is environment variables (see `.env.example`): `BOOKCASE_HOST`, `BOOKCASE_PORT`, `BOOKCASE_DB`, `BOOKCASE_TLS_CERT`, `BOOKCASE_TLS_KEY`. State lives in `data/`.
+Configuration is environment variables (see `.env.example`): `BOOKCASE_HOST`, `BOOKCASE_PORT`, `BOOKCASE_DB`, `BOOKCASE_CONTACT_EMAIL`, `BOOKCASE_TLS_CERT`, `BOOKCASE_TLS_KEY`. State lives in `data/`.
 
 ### HTTPS for phone camera scanning
 

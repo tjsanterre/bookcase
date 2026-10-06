@@ -3,15 +3,22 @@ import type Database from "better-sqlite3";
 import { Hono } from "hono";
 import { createBookStore, DuplicateIsbn, InvalidInput, parseBookDetails, parseTags } from "./books.ts";
 import { normalizeIsbn } from "./isbn.ts";
+import { createOpenLibrary, LookupFailed, type Lookup } from "./openLibrary.ts";
 import { normalizeTag } from "./tags.ts";
 
-export function createApp(opts: { db: Database.Database; webRoot?: string }) {
+export function createApp(opts: {
+  db: Database.Database;
+  webRoot?: string;
+  lookup?: (isbn: string) => Promise<Lookup | undefined>;
+}) {
+  const lookup = opts.lookup ?? createOpenLibrary(fetch, "Bookcase");
   const store = createBookStore(opts.db);
   const app = new Hono();
   app.get("/api/health", (c) => c.json({ ok: true }));
 
   app.onError((e, c) => {
     if (e instanceof InvalidInput) return c.json({ error: e.message }, 400);
+    if (e instanceof LookupFailed) return c.json({ error: e.message }, 502);
     if (e instanceof DuplicateIsbn) return c.json({ error: "a Book with that ISBN already exists" }, 409);
     throw e;
   });
@@ -40,6 +47,20 @@ export function createApp(opts: { db: Database.Database; webRoot?: string }) {
     const body = await readJson(c);
     const tags = parseTags((body as { tags?: unknown } | null)?.tags ?? []);
     return c.json(store.create(parseBookDetails(body), tags), 201);
+  });
+
+  // Outcomes: saved (hit), duplicate (already in the Bookcase), manual (Open Library has no usable edition)
+  app.post("/api/scan", async (c) => {
+    const raw = ((await readJson(c)) as { isbn?: unknown } | null)?.isbn;
+    const isbn = typeof raw === "string" ? normalizeIsbn(raw) : null;
+    if (!isbn) throw new InvalidInput("isbn is not a valid ISBN-10 or ISBN-13");
+    const existing = store.get(isbn);
+    if (existing) return c.json({ status: "duplicate", book: existing });
+    const found = await lookup(isbn);
+    if (!found) return c.json({ status: "manual", isbn });
+    const book = store.create(found.details);
+    if (found.cover) store.setCover(isbn, found.cover.contentType, found.cover.data);
+    return c.json({ status: "saved", book }, 201);
   });
 
   app.get("/api/books/:isbn", (c) => {
