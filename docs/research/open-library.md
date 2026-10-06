@@ -52,7 +52,7 @@ I made roughly 100 requests during probing (including unauthenticated ones) with
 
 ## Coverage and miss rate
 
-Sample of 20 common, mainstream ISBN-13s (Tolkien, Dahl, Herbert, Atwood-era bestsellers, recent hardbacks, O'Reilly): 20/20 returned a record from both `/isbn` and `/api/books`. This is a small, hand-picked sample, not a statistically meaningful miss rate. Expect misses mainly for: very new releases, small-press/self-published titles, and some non-English editions. Checked misses: well-formed but unregistered ISBNs return `{}` (Books API) or 404 (`/isbn`). Random valid-looking ISBNs sometimes hit obscure records (e.g. `9780000000002` and `9780000000019` exist), so a hit is not proof the book is the one in hand.
+Sample of 20 common, mainstream ISBN-13s (Dahl, Tolkien, Herbert, O'Reilly and recent bestsellers): 20/20 returned a record from both `/isbn` and `/api/books`. This is a small, hand-picked sample, not a statistically meaningful miss rate. Expect misses mainly for: very new releases, small-press/self-published titles, and some non-English editions. Checked misses: well-formed but unregistered ISBNs return `{}` (Books API) or 404 (`/isbn`). Random valid-looking ISBNs sometimes hit obscure records (e.g. `9780000000002` and `9780000000019` exist), so a hit is not proof the book is the one in hand.
 
 ## Fallback source
 
