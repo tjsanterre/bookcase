@@ -12,6 +12,10 @@ _Avoid_: Library, shelf
 One entry in the Bookcase, identified by its ISBN. An ISBN already in the Bookcase never produces a second Book.
 _Avoid_: Item, title, copy
 
+**Tag**:
+A free-form, lowercase label the user attaches to a Book to group and find it. Flat, with no hierarchy.
+_Avoid_: Category, genre, subject (a subject is Open Library's own label, not the user's)
+
 **Scan**:
 The act of adding a Book to the Bookcase by supplying its ISBN, by camera barcode read or by typing it.
 _Avoid_: Import, lookup
