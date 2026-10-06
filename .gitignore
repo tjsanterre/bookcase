@@ -27,3 +27,7 @@ npm-debug.log*
 
 # Agent worktrees
 .claude/worktrees/
+
+# App state and local certs
+data/
+certs/
