@@ -1,0 +1,196 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PROTOTYPE: scan flow</title>
+<!-- PROTOTYPE, throwaway. Question: what should the Scan flow (add-a-Book) feel like on a phone?
+     Three variants on one page, switch with ?variant=A|B|C or the bottom bar.
+     A = viewfinder + auto-save, B = form-first, C = batch queue. Lookup is stubbed; no persistence. -->
+<style>
+  * { box-sizing: border-box }
+  body { margin: 0; font: 16px system-ui, sans-serif; background: #f4f1ea; color: #222; padding-bottom: 130px }
+  #app { max-width: 480px; margin: 0 auto; padding: 12px }
+  h1 { font-size: 18px; margin: 4px 0 10px }
+  input { font: inherit; padding: 10px; border: 1px solid #bbb; border-radius: 8px; width: 100%; background: #fff }
+  button { font: inherit; padding: 10px 14px; border: 0; border-radius: 8px; background: #2b5; color: #fff }
+  button.alt { background: #ddd; color: #222 }
+  button.danger { background: #c44 }
+  .row { display: flex; gap: 8px; align-items: center; margin: 8px 0 }
+  .card { background: #fff; border-radius: 10px; padding: 10px; margin: 8px 0; box-shadow: 0 1px 2px #0002 }
+  .cover { width: 40px; height: 56px; background: #9ab; border-radius: 3px; flex: none }
+  .muted { color: #777; font-size: 14px }
+  .err { color: #c22; font-size: 14px }
+  .banner { padding: 10px; border-radius: 8px; margin: 8px 0; background: #fe9; }
+  .finder { height: 190px; background: #111; border-radius: 12px; display: grid; place-items: center; color: #8a8; position: relative; overflow: hidden }
+  .finder::after { content: ""; position: absolute; width: 70%; height: 38%; border: 2px solid #3f6; border-radius: 8px }
+  .sheet { position: fixed; left: 0; right: 0; bottom: 118px; max-width: 480px; margin: auto; background: #fff; padding: 14px; border-radius: 14px 14px 0 0; box-shadow: 0 -4px 14px #0004; z-index: 5 }
+  .overlay { position: fixed; inset: 0; background: #000e; z-index: 4; display: grid; place-items: center; color: #8f8; text-align: center }
+  .chip { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 12px; background: #ddd }
+  .chip.ready { background: #bfb } .chip.miss { background: #fc8 } .chip.dup { background: #f99 } .chip.looking { background: #cdf }
+  #sim { position: fixed; left: 0; right: 0; bottom: 50px; background: #333; color: #fff; padding: 6px; font-size: 13px; text-align: center; z-index: 9 }
+  #sim button { padding: 4px 8px; font-size: 13px; background: #666; margin: 2px }
+  #bar { position: fixed; left: 50%; bottom: 8px; transform: translateX(-50%); background: #000; color: #fff; border-radius: 20px; padding: 6px 10px; display: flex; gap: 14px; align-items: center; z-index: 10; box-shadow: 0 2px 8px #0008 }
+  #bar button { background: none; padding: 4px 10px; font-size: 18px }
+</style>
+<div id="app"></div>
+<div id="sim"></div>
+<div id="bar"></div>
+<script>
+// ---- stub backend ----
+const DB = {
+  '9780140328721': { title: "Fantastic Mr Fox", authors: ["Roald Dahl"] },
+  '9780261103573': { title: "The Fellowship of the Ring", subtitle: "Being the First Part of The Lord of the Rings", authors: ["J. R. R. Tolkien"] },
+  '9780441172719': { title: "Dune", authors: ["Frank Herbert"] },
+}
+const SAMPLES = [['9780140328721','hit: Fox'],['9780261103573','hit: Fellowship'],['9780441172719','duplicate: Dune'],['9781234567897','miss']]
+const books = [{ isbn: '9780441172719', title: 'Dune', authors: ['Frank Herbert'], tags: ['scifi'] }]
+const lookup = isbn => new Promise(r => setTimeout(() => r(DB[isbn] || null), 700))
+const have = isbn => books.find(b => b.isbn === isbn)
+const list = s => s.split(',').map(x => x.trim()).filter(Boolean)
+
+function norm(raw) { // -> isbn13 or null
+  const d = raw.replace(/[\s-]/g, '')
+  if (/^97[89]\d{10}$/.test(d)) return d
+  if (/^\d{9}[\dXx]$/.test(d)) {
+    const b = '978' + d.slice(0, 9)
+    const c = (10 - [...b].reduce((s, ch, i) => s + +ch * (i % 2 ? 3 : 1), 0) % 10) % 10
+    return b + c
+  }
+  return null
+}
+
+// ---- shared state ----
+const variant = (new URLSearchParams(location.search).get('variant') || 'A').toUpperCase()
+const S = { typed: '', err: '', flash: '' }
+const A = { busy: false, recent: [], sheet: null }
+const B = { camera: false, busy: false, banner: null, form: null }
+const C = { q: [], n: 0 }
+
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))
+const finder = '<div class="finder">camera viewfinder (simulated)</div>'
+const typedBox = (ph = 'Type ISBN') => `<div class="row"><input id="typed" inputmode="numeric" placeholder="${ph}" value="${esc(S.typed)}"><button data-act="typed">Add</button></div>${S.err ? `<div class="err">${esc(S.err)}</div>` : ''}`
+
+// ---- entry: both camera and typed funnel into scan() ----
+function scan(raw, fromCamera) {
+  const isbn = norm(raw)
+  if (!isbn) { S.err = 'Not a valid ISBN'; return render() }
+  S.err = ''; S.typed = ''
+  if (variant === 'A') return aScan(isbn)
+  if (variant === 'B') return bScan(isbn, fromCamera)
+  return cScan(isbn)
+}
+
+// ---- Variant A: viewfinder, auto-save, interrupt only on miss/duplicate ----
+async function aScan(isbn) {
+  if (A.busy || A.sheet) { S.flash = 'Scanner paused: finish the sheet / lookup first'; return render() }
+  S.flash = ''
+  if (have(isbn)) { A.sheet = { type: 'dup', book: have(isbn) }; return render() }
+  A.busy = isbn; render()
+  const d = await lookup(isbn); A.busy = false
+  if (d) { const b = { isbn, ...d, tags: [] }; books.push(b); A.recent.unshift(b) }
+  else A.sheet = { type: 'miss', isbn }
+  render()
+}
+function viewA() {
+  const sheet = A.sheet && (A.sheet.type === 'edit'
+    ? `<div class="sheet"><div class="muted">ISBN ${A.sheet.book.isbn}</div><input id="e-title" value="${esc(A.sheet.book.title)}"><div class="row"></div><input id="e-subtitle" placeholder="Subtitle" value="${esc(A.sheet.book.subtitle)}"><div class="row"></div><input id="e-authors" value="${esc(A.sheet.book.authors.join(', '))}"><div class="row"></div><input id="e-tags" placeholder="Tags, comma separated" value="${esc(A.sheet.book.tags.join(', '))}"><div class="row"><button data-act="a-edit-save">Save</button><button class="alt" data-act="a-dismiss">Close</button></div></div>`
+    : A.sheet.type === 'dup'
+    ? `<div class="sheet"><b>Already in your Bookcase</b><p>${esc(A.sheet.book.title)}</p><div class="row"><button data-act="open" data-arg="${A.sheet.book.isbn}">Open it</button><button class="alt" data-act="a-dismiss">Keep scanning</button></div></div>`
+    : `<div class="sheet"><b>No details found for ${A.sheet.isbn}</b><input id="m-title" placeholder="Title (required)"><div class="row"></div><input id="m-authors" placeholder="Authors, comma separated"><div class="row"><button data-act="a-manual">Save</button><button class="alt" data-act="a-dismiss">Skip</button></div></div>`)
+  return `<h1>Add books</h1>${finder}
+    ${A.busy ? `<div class="banner">Looking up ${A.busy}…</div>` : ''}${S.flash ? `<div class="banner">${esc(S.flash)}</div>` : ''}
+    ${typedBox()}
+    <div class="muted">Just added (${A.recent.length}) — saved automatically</div>
+    ${A.recent.map(b => `<div class="card row"><div class="cover"></div><div style="flex:1" data-act="a-edit" data-arg="${b.isbn}"><b>${esc(b.title)}</b><div class="muted">${esc(b.authors.join(', '))}</div></div><button class="alt" data-act="a-undo" data-arg="${b.isbn}">Undo</button></div>`).join('')}${sheet || ''}`
+}
+
+// ---- Variant B: form-first, one Book at a time, explicit Save ----
+async function bScan(isbn, fromCamera) {
+  if (B.busy) return
+  B.camera = false; B.banner = null; B.form = null
+  if (have(isbn)) { B.banner = { type: 'dup', book: have(isbn) }; return render() }
+  B.busy = isbn; render()
+  const d = await lookup(isbn); B.busy = false
+  B.form = { isbn, found: !!d, title: d?.title || '', subtitle: d?.subtitle || '', authors: (d?.authors || []).join(', '), tags: '' }
+  render()
+}
+function viewB() {
+  const f = B.form
+  const cam = B.camera ? `<div class="overlay"><div><div class="finder" style="width:300px">camera viewfinder (simulated)</div><p>Use the grey bar to simulate a read</p><button class="alt" data-act="b-cam-off">Cancel</button></div></div>` : ''
+  return `<h1>Add a book</h1>
+    <div class="row"><button data-act="b-cam-on">📷 Scan</button><span class="muted">or type below</span></div>${typedBox()}
+    ${B.busy ? `<div class="banner">Looking up ${B.busy}…</div>` : ''}
+    ${B.banner?.type === 'dup' ? `<div class="banner">Already in your Bookcase: <b>${esc(B.banner.book.title)}</b><div class="row"><button data-act="open" data-arg="${B.banner.book.isbn}">Open it</button></div></div>` : ''}
+    ${B.banner?.type === 'saved' ? `<div class="banner" style="background:#bfb">Saved “${esc(B.banner.title)}”</div>` : ''}
+    ${f ? `<div class="card">${f.found ? '' : '<div class="banner">No details found. Fill in what you know.</div>'}
+      <div class="muted">ISBN ${f.isbn}</div><div class="row"><div class="cover"></div><div style="flex:1">
+      <input data-f="title" placeholder="Title (required)" value="${esc(f.title)}"></div></div>
+      <input data-f="subtitle" placeholder="Subtitle" value="${esc(f.subtitle)}"><div class="row"></div>
+      <input data-f="authors" placeholder="Authors, comma separated" value="${esc(f.authors)}"><div class="row"></div>
+      <input data-f="tags" placeholder="Tags, comma separated" value="${esc(f.tags)}">
+      <div class="row"><button data-act="b-save" data-arg="next">Save & scan next</button><button class="alt" data-act="b-save">Save</button><button class="alt" data-act="b-discard">Discard</button></div></div>` : ''}${cam}`
+}
+
+// ---- Variant C: batch queue, scan freely, review afterwards ----
+async function cScan(isbn) {
+  const it = { id: ++C.n, isbn, state: 'looking', title: '', subtitle: '', authors: '', tags: '', open: false }
+  C.q.unshift(it)
+  if (have(isbn) || C.q.some(x => x !== it && x.isbn === isbn)) { it.state = 'dup'; return render() }
+  render()
+  const d = await lookup(isbn)
+  if (d) { Object.assign(it, { title: d.title, subtitle: d.subtitle || '', authors: d.authors.join(', ') }); it.state = 'ready' } else { it.state = 'miss'; it.open = true }
+  render()
+}
+function viewC() {
+  const ready = C.q.filter(x => x.state === 'ready').length
+  return `<h1>Scan a batch</h1>${finder}${typedBox()}
+    <div class="row"><b style="flex:1">Queue (${C.q.length})</b><button data-act="c-saveall" ${ready ? '' : 'disabled'}>Save ${ready} ready</button></div>
+    ${C.q.map(x => `<div class="card"><div class="row" data-act="c-toggle" data-arg="${x.id}"><div class="cover"></div><div style="flex:1"><b>${esc(x.title || x.isbn)}</b><div class="muted">${esc(x.authors)}</div></div><span class="chip ${x.state}">${x.state === 'dup' ? 'already have' : x.state === 'miss' ? 'needs title' : x.state}</span></div>
+      ${x.state === 'dup' ? `<div class="row"><button class="alt" data-act="open" data-arg="${x.isbn}">Open existing</button><button class="alt" data-act="c-drop" data-arg="${x.id}">Drop</button></div>` : ''}
+      ${x.open && x.state !== 'dup' && x.state !== 'looking' ? `<input data-c="${x.id}" data-f="title" placeholder="Title (required)" value="${esc(x.title)}"><div class="row"></div><input data-c="${x.id}" data-f="authors" placeholder="Authors" value="${esc(x.authors)}"><div class="row"></div><input data-c="${x.id}" data-f="tags" placeholder="Tags" value="${esc(x.tags)}"><div class="row"><button class="alt danger" data-act="c-drop" data-arg="${x.id}">Drop</button></div>` : ''}</div>`).join('')}`
+}
+
+// ---- wiring ----
+const views = { A: viewA, B: viewB, C: viewC }
+function render() {
+  document.getElementById('app').innerHTML = (views[variant] || viewA)()
+  document.getElementById('sim').innerHTML = 'Simulate camera read: ' + SAMPLES.map(([i, l]) => `<button data-act="sim" data-arg="${i}">${l}</button>`).join('')
+  const vs = ['A', 'B', 'C'], names = { A: 'Viewfinder + auto-save', B: 'Form-first', C: 'Batch queue' }
+  const go = d => `?variant=${vs[(vs.indexOf(variant) + d + 3) % 3]}`
+  document.getElementById('bar').innerHTML = `<button onclick="location.search='${go(-1)}'">←</button><span>${variant} (${names[variant]})</span><button onclick="location.search='${go(1)}'">→</button>`
+  if (flash) { flash = false }
+}
+let flash = false
+const acts = {
+  typed: () => scan(document.getElementById('typed').value),
+  sim: isbn => { if (variant === 'B' && !B.camera) { S.flash = ''; alert('Camera is not open (tap Scan first)'); return } scan(isbn, true) },
+  open: isbn => alert('(stub) navigate to Book detail for ' + have(isbn).title),
+  'a-dismiss': () => { A.sheet = null; render() },
+  'a-edit': isbn => { A.sheet = { type: 'edit', book: have(isbn) }; render() },
+  'a-edit-save': () => { const b = A.sheet.book, v = id => document.getElementById(id).value; if (!v('e-title').trim()) return; Object.assign(b, { title: v('e-title').trim(), subtitle: v('e-subtitle'), authors: list(v('e-authors')), tags: list(v('e-tags')).map(x => x.toLowerCase()) }); A.sheet = null; render() },
+  'a-undo': isbn => { books.splice(books.findIndex(b => b.isbn === isbn), 1); A.recent = A.recent.filter(b => b.isbn !== isbn); render() },
+  'a-manual': () => { const t = document.getElementById('m-title').value.trim(); if (!t) return; const b = { isbn: A.sheet.isbn, title: t, authors: list(document.getElementById('m-authors').value), tags: [] }; books.push(b); A.recent.unshift(b); A.sheet = null; render() },
+  'b-cam-on': () => { B.camera = true; render() },
+  'b-cam-off': () => { B.camera = false; render() },
+  'b-discard': () => { B.form = null; render() },
+  'b-save': arg => { const f = B.form; if (!f.title.trim()) { alert('Title required'); return } books.push({ isbn: f.isbn, title: f.title.trim(), subtitle: f.subtitle, authors: list(f.authors), tags: list(f.tags).map(t => t.toLowerCase()) }); B.banner = { type: 'saved', title: f.title }; B.form = null; if (arg === 'next') B.camera = true; render() },
+  'c-toggle': id => { const x = C.q.find(x => x.id == id); x.open = !x.open; render() },
+  'c-drop': id => { C.q = C.q.filter(x => x.id != id); render() },
+  'c-saveall': () => { C.q.filter(x => x.state === 'ready').forEach(x => books.push({ isbn: x.isbn, title: x.title, authors: list(x.authors), tags: list(x.tags) })); C.q = C.q.filter(x => x.state !== 'ready'); render() },
+}
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-act]'); if (!el || el.disabled) return
+  if (e.target.closest('input')) return
+  acts[el.dataset.act]?.(el.dataset.arg)
+})
+document.addEventListener('input', e => { // no re-render: keeps focus
+  const t = e.target
+  if (t.id === 'typed') S.typed = t.value
+  else if (t.dataset.f && t.dataset.c) { const x = C.q.find(x => x.id == t.dataset.c); x[t.dataset.f] = t.value }
+  else if (t.dataset.f && B.form) B.form[t.dataset.f] = t.value
+})
+document.addEventListener('change', e => { // C: a Miss becomes ready once it has a title
+  if (variant === 'C' && e.target.dataset.c) { const x = C.q.find(x => x.id == e.target.dataset.c); if (x.state === 'miss' && x.title.trim()) x.state = 'ready'; if (x.state === 'ready' && !x.title.trim()) x.state = 'miss'; render() }
+})
+document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'typed') acts.typed() })
+render()
+</script>
