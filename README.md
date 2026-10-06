@@ -19,4 +19,4 @@ Setup instructions will be added once the project is scaffolded.
 
 ## License
 
-TBD
+MIT
