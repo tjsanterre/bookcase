@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onActivated, onDeactivated, ref } from "vue";
+import { nextTick, onActivated, onDeactivated, ref, watch } from "vue";
 import { BarcodeDetector } from "barcode-detector/ponyfill";
 
 interface Book {
@@ -11,6 +11,8 @@ type Scan = { status: "saved"; book: Book } | { status: "duplicate"; book: Book 
 const REPEAT_MS = 3000;
 
 const video = ref<HTMLVideoElement>();
+const input = ref<HTMLInputElement>();
+const manualError = ref("");
 const typed = ref("");
 const error = ref("");
 const notice = ref("");
@@ -20,11 +22,11 @@ const pending = ref(false);
 const duplicate = ref<Book | null>(null);
 const manual = ref<{ isbn: string; title: string; authors: string } | null>(null);
 
-// A lookup or open sheet blocks further scans
-async function scan(isbn: string) {
+// A lookup or open sheet blocks further scans; camera reads that aren't ISBNs are dropped silently
+async function scan(isbn: string, fromCamera = false): Promise<boolean> {
   if (pending.value || duplicate.value || manual.value) {
     notice.value = "Finish the current Scan first";
-    return;
+    return false;
   }
   notice.value = "";
   pending.value = true;
@@ -36,26 +38,35 @@ async function scan(isbn: string) {
     });
     const body = await res.json();
     if (!res.ok) {
-      error.value = body.error;
-      return;
+      if (!fromCamera) error.value = body.error;
+      return false;
     }
     error.value = "";
     const r = body as Scan;
     if (r.status === "saved") added.value.unshift(r.book);
     else if (r.status === "duplicate") duplicate.value = r.book;
     else manual.value = { isbn: r.isbn, title: "", authors: "" };
+    return true;
   } catch {
-    error.value = "Could not reach the server";
+    if (!fromCamera) error.value = "Could not reach the server";
+    return false;
   } finally {
     pending.value = false;
   }
 }
 
-function submitTyped() {
+async function submitTyped() {
   const isbn = typed.value.trim();
-  typed.value = "";
-  if (isbn) scan(isbn);
+  if (isbn && (await scan(isbn))) typed.value = "";
 }
+
+// Keeps a USB scanner's next read landing in the input
+watch([duplicate, manual], ([d, m]) => {
+  if (d || m) return;
+  notice.value = "";
+  manualError.value = "";
+  nextTick(() => input.value?.focus());
+});
 
 async function undo(book: Book) {
   const res = await fetch(`/api/books/${book.isbn}`, { method: "DELETE" });
@@ -76,7 +87,7 @@ async function saveManual() {
     }),
   });
   if (!res.ok) {
-    error.value = (await res.json()).error;
+    manualError.value = (await res.json()).error;
     return;
   }
   added.value.unshift(await res.json());
@@ -88,35 +99,49 @@ let stream: MediaStream | undefined;
 let timer: ReturnType<typeof setInterval> | undefined;
 const lastSeen = new Map<string, number>();
 
+let generation = 0;
+
 async function startCamera() {
+  const mine = ++generation;
+  let s: MediaStream;
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+    s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
   } catch {
     cameraError.value = "Camera unavailable; type the ISBN instead";
     return;
   }
-  video.value!.srcObject = stream;
+  if (mine !== generation) return s.getTracks().forEach((t) => t.stop());
+  stream = s;
+  video.value!.srcObject = s;
   await video.value!.play();
   const detector = new BarcodeDetector({ formats: ["ean_13"] });
+  let busy = false;
   timer = setInterval(async () => {
+    if (busy) return;
+    busy = true;
     const codes = await detector.detect(video.value!).catch(() => []);
     const now = Date.now();
     for (const { rawValue } of codes) {
       const seen = lastSeen.get(rawValue);
       lastSeen.set(rawValue, now);
-      if (seen === undefined || now - seen > REPEAT_MS) scan(rawValue);
+      if (seen === undefined || now - seen > REPEAT_MS) scan(rawValue, true);
     }
+    busy = false;
   }, 250);
 }
 
 function stopCamera() {
+  generation++;
   clearInterval(timer);
   stream?.getTracks().forEach((t) => t.stop());
   stream = undefined;
   lastSeen.clear();
 }
 
-onActivated(startCamera);
+onActivated(() => {
+  startCamera();
+  input.value?.focus();
+});
 onDeactivated(stopCamera);
 </script>
 
@@ -126,7 +151,7 @@ onDeactivated(stopCamera);
     <video ref="video" playsinline muted />
     <p v-if="cameraError">{{ cameraError }}</p>
     <form @submit.prevent="submitTyped">
-      <input v-model="typed" inputmode="numeric" placeholder="Type or scan an ISBN" aria-label="ISBN" autofocus />
+      <input ref="input" v-model="typed" inputmode="numeric" placeholder="Type or scan an ISBN" aria-label="ISBN" autofocus />
     </form>
     <p v-if="error" role="alert">{{ error }}</p>
     <p v-if="notice" role="status">{{ notice }}</p>
@@ -150,6 +175,7 @@ onDeactivated(stopCamera);
 
     <form v-if="manual" class="sheet" role="dialog" @submit.prevent="saveManual">
       <p>No details found for {{ manual.isbn }}.</p>
+      <p v-if="manualError" role="alert">{{ manualError }}</p>
       <label>Title <input v-model="manual.title" required /></label>
       <label>Authors (comma separated) <input v-model="manual.authors" /></label>
       <button type="submit">Save</button>
