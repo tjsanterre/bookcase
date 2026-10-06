@@ -187,6 +187,8 @@ onDeactivated(stopCamera);
 
 <style>
 .scan { padding: 0.5rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.scan form:not(.sheet) { display: flex; gap: 0.5rem; }
+.scan form:not(.sheet) input { flex: 1; }
 .scan video { width: 100%; max-height: 40vh; background: #000; }
 .sheet { position: fixed; inset: auto 0 0 0; padding: 1rem; background: Canvas; border-top: 1px solid; display: flex; flex-direction: column; gap: 0.5rem; }
 </style>
