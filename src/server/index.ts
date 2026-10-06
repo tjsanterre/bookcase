@@ -3,9 +3,10 @@ import { createServer } from "node:https";
 import { serve } from "@hono/node-server";
 import { createApp } from "./app.ts";
 import { loadConfig } from "./config.ts";
+import { openDb } from "./db.ts";
 
 const config = loadConfig(process.env);
-const app = createApp({ webRoot: "dist/web" });
+const app = createApp({ db: openDb(config.db), webRoot: "dist/web" });
 
 const tls = config.tls && {
   createServer,

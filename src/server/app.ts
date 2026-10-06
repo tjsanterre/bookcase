@@ -1,9 +1,62 @@
 import { serveStatic } from "@hono/node-server/serve-static";
+import type Database from "better-sqlite3";
 import { Hono } from "hono";
+import { createBookStore, DuplicateIsbn, InvalidInput, parseBookDetails, parseTags } from "./books.ts";
+import { normalizeIsbn } from "./isbn.ts";
 
-export function createApp(opts: { webRoot?: string } = {}) {
+export function createApp(opts: { db: Database.Database; webRoot?: string }) {
+  const store = createBookStore(opts.db);
   const app = new Hono();
   app.get("/api/health", (c) => c.json({ ok: true }));
+
+  app.onError((e, c) => {
+    if (e instanceof InvalidInput) return c.json({ error: e.message }, 400);
+    if (e instanceof DuplicateIsbn) return c.json({ error: "a Book with that ISBN already exists" }, 409);
+    throw e;
+  });
+
+  // Reads the JSON body; unparseable input becomes InvalidInput
+  const readJson = (c: { req: { json(): Promise<unknown> } }) =>
+    c.req.json().catch(() => {
+      throw new InvalidInput("body must be valid JSON");
+    });
+
+  // The :isbn path segment may be an ISBN-10; unknown or malformed ISBNs both read as "not found"
+  const isbnParam = (raw: string) => normalizeIsbn(raw) ?? "";
+
+  app.post("/api/books", async (c) => {
+    const body = await readJson(c);
+    const tags = parseTags((body as { tags?: unknown } | null)?.tags ?? []);
+    return c.json(store.create(parseBookDetails(body), tags), 201);
+  });
+
+  app.get("/api/books/:isbn", (c) => {
+    const book = store.get(isbnParam(c.req.param("isbn")));
+    return book ? c.json(book) : c.json({ error: "not found" }, 404);
+  });
+
+  app.put("/api/books/:isbn", async (c) => {
+    const book = store.update(isbnParam(c.req.param("isbn")), parseBookDetails(await readJson(c)));
+    return book ? c.json(book) : c.json({ error: "not found" }, 404);
+  });
+
+  app.delete("/api/books/:isbn", (c) =>
+    store.delete(isbnParam(c.req.param("isbn"))) ? c.body(null, 204) : c.json({ error: "not found" }, 404),
+  );
+
+  app.put("/api/books/:isbn/tags", async (c) => {
+    const body = (await readJson(c)) as { tags?: unknown } | null;
+    const book = store.setTags(isbnParam(c.req.param("isbn")), parseTags(body?.tags));
+    return book ? c.json(book) : c.json({ error: "not found" }, 404);
+  });
+
+  app.get("/api/books/:isbn/cover", (c) => {
+    const cover = store.getCover(isbnParam(c.req.param("isbn")));
+    if (!cover) return c.json({ error: "not found" }, 404);
+    return c.body(new Uint8Array(cover.data), 200, { "Content-Type": cover.contentType });
+  });
+
+  app.get("/api/tags", (c) => c.json(store.listTags()));
 
   if (opts.webRoot) {
     const root = opts.webRoot;
