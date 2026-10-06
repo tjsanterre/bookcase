@@ -1,0 +1,119 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PROTOTYPE: book detail</title>
+<!-- PROTOTYPE, throwaway. Question: what is the Book detail screen: its own page or the Scan screen's edit sheet reused?
+     ?variant=A|B|C or the bottom bar. A = view-first page + Edit toggle, B = always-editable page with autosave,
+     C = no page: the same bottom sheet as the Scan screen, opened over the list. In-memory only. -->
+<style>
+  * { box-sizing: border-box }
+  body { margin: 0; font: 16px system-ui, sans-serif; background: #f4f1ea; color: #222; padding-bottom: 70px }
+  #app { max-width: 480px; margin: 0 auto; padding: 12px }
+  h1 { font-size: 18px; margin: 4px 0 10px }
+  input { font: inherit; padding: 10px; border: 1px solid #bbb; border-radius: 8px; width: 100%; background: #fff; margin: 4px 0 }
+  button { font: inherit; padding: 10px 14px; border: 0; border-radius: 8px; background: #2b5; color: #fff }
+  button.alt { background: #ddd; color: #222 } button.danger { background: #c44 } button.link { background: none; color: #c44; padding: 6px 0 }
+  .row { display: flex; gap: 8px; align-items: center; margin: 8px 0 }
+  .card { background: #fff; border-radius: 10px; padding: 10px; margin: 8px 0; box-shadow: 0 1px 2px #0002 }
+  .cover { width: 40px; height: 56px; background: #9ab; border-radius: 3px; flex: none } .cover.big { width: 90px; height: 128px }
+  .muted { color: #777; font-size: 14px }
+  .tag { display: inline-block; padding: 3px 9px; border-radius: 12px; background: #dde8d8; font-size: 14px; margin: 2px 3px 2px 0 }
+  .tag.sug { background: none; border: 1px dashed #999; color: #666 }
+  .tag b { margin-left: 6px; cursor: pointer }
+  .sheet { position: fixed; left: 0; right: 0; bottom: 0; max-width: 480px; margin: auto; background: #fff; padding: 14px 14px 70px; border-radius: 14px 14px 0 0; box-shadow: 0 -4px 14px #0004; z-index: 5; max-height: 90vh; overflow: auto }
+  .banner { padding: 8px 10px; border-radius: 8px; margin: 8px 0; background: #bfb }
+  #bar { position: fixed; left: 50%; bottom: 8px; transform: translateX(-50%); background: #000; color: #fff; border-radius: 20px; padding: 6px 10px; display: flex; gap: 14px; align-items: center; z-index: 10; box-shadow: 0 2px 8px #0008 }
+  #bar button { background: none; padding: 4px 10px; font-size: 18px }
+</style>
+<div id="app"></div>
+<div id="bar"></div>
+<script>
+const books = [
+  { isbn: '9780441172719', title: 'Dune', subtitle: '', authors: ['Frank Herbert'], tags: ['scifi', 'favourites'] },
+  { isbn: '9780140328721', title: 'Fantastic Mr Fox', subtitle: '', authors: ['Roald Dahl'], tags: ['kids', 'roald dahl'] },
+  { isbn: '9780261103573', title: 'The Fellowship of the Ring', subtitle: 'Being the First Part of The Lord of the Rings', authors: ['J. R. R. Tolkien'], tags: ['fantasy', 'reread'] },
+  { isbn: '9780441569595', title: 'Neuromancer', subtitle: '', authors: ['William Gibson'], tags: ['scifi'] },
+  { isbn: '9780142410370', title: 'Matilda', subtitle: '', authors: ['Roald Dahl'], tags: [] },
+]
+const variant = (new URLSearchParams(location.search).get('variant') || 'A').toUpperCase()
+const S = { open: null, edit: false, draft: null, del: false, menu: false, note: '' }
+const cur = () => books.find(b => b.isbn === S.open)
+const list = s => s.split(',').map(x => x.trim()).filter(Boolean)
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+const allTags = () => [...new Set(books.flatMap(b => b.tags))].sort()
+
+const tagsBlock = b => `<div class="muted">Tags</div><div>${b.tags.map(t => `<span class="tag">${esc(t)}<b data-act="rmtag" data-arg="${esc(t)}">×</b></span>`).join('')}</div>
+  <input id="newtag" placeholder="Add a tag, press Enter">
+  <div>${allTags().filter(t => !b.tags.includes(t)).map(t => `<span class="tag sug" data-act="addtag" data-arg="${esc(t)}">+ ${esc(t)}</span>`).join('')}</div>`
+const delBlock = () => S.del
+  ? `<div class="card"><b>Delete this Book permanently?</b><div class="muted">There is no undo.</div><div class="row"><button class="danger" data-act="delete">Delete</button><button class="alt" data-act="del-off">Cancel</button></div></div>`
+  : `<button class="link" data-act="del-on">Delete this Book</button>`
+const inputs = (v, ids) => `<input ${ids}title placeholder="Title (required)" value="${esc(v.title)}"><input ${ids}subtitle placeholder="Subtitle" value="${esc(v.subtitle)}"><input ${ids}authors placeholder="Authors, comma separated" value="${esc(v.authors)}">`
+
+const listView = () => `<h1>Bookcase (${books.length})</h1>` + books.map(b => `<div class="card row" data-act="open" data-arg="${b.isbn}"><div class="cover"></div><div style="flex:1"><b>${esc(b.title)}</b><div class="muted">${esc(b.authors.join(', '))}</div><div>${b.tags.map(t => `<span class="tag">${esc(t)}</span>`).join('')}</div></div></div>`).join('')
+  + (S.note ? `<div class="banner">${esc(S.note)}</div>` : '')
+
+// A: view-first page, Edit toggles the three text fields; tags editable inline always
+function pageA() {
+  const b = cur()
+  return `<div class="row"><button class="alt" data-act="back">← Bookcase</button></div>
+    <div class="row" style="align-items:flex-start"><div class="cover big"></div><div style="flex:1">
+    ${S.edit ? inputs(S.draft, 'data-d=') : `<h1 style="margin:0">${esc(b.title)}</h1><div class="muted">${esc(b.subtitle)}</div><div>${esc(b.authors.join(', '))}</div>`}
+    <div class="muted">ISBN ${b.isbn}</div></div></div>
+    ${S.edit ? `<div class="row"><button data-act="save">Save</button><button class="alt" data-act="cancel">Cancel</button></div>` : `<button class="alt" data-act="edit">Edit details</button>`}
+    <div class="card">${tagsBlock(b)}</div>${delBlock()}`
+}
+// B: always editable, writes through on change; overflow menu holds Delete
+function pageB() {
+  const b = cur()
+  return `<div class="row"><button class="alt" data-act="back">← Bookcase</button><span style="flex:1"></span><span class="muted" id="note">${S.note}</span><button class="alt" data-act="menu">⋯</button></div>
+    ${S.menu ? delBlock() : ''}
+    <div class="row" style="align-items:flex-start"><div class="cover big"></div><div style="flex:1">
+    ${inputs({ title: b.title, subtitle: b.subtitle, authors: b.authors.join(', ') }, 'data-w=')}<div class="muted">ISBN ${b.isbn}</div></div></div>
+    <div class="card">${tagsBlock(b)}</div>`
+}
+// C: the Scan screen's edit sheet, over the list; explicit Save
+function sheetC() {
+  const b = cur()
+  return `<div class="sheet"><div class="muted">ISBN ${b.isbn}</div>${inputs(S.draft, 'data-d=')}${tagsBlock(b)}
+    <div class="row"><button data-act="save">Save</button><button class="alt" data-act="back">Close</button></div>${delBlock()}</div>`
+}
+function render() {
+  const app = document.getElementById('app')
+  app.innerHTML = variant === 'C' ? listView() + (S.open ? sheetC() : '') : S.open ? (variant === 'B' ? pageB() : pageA()) : listView()
+  const vs = ['A', 'B', 'C'], names = { A: 'View-first page', B: 'Always-editable page', C: 'Reused sheet' }
+  const go = d => `?variant=${vs[(vs.indexOf(variant) + d + 3) % 3]}`
+  document.getElementById('bar').innerHTML = `<button onclick="location.search='${go(-1)}'">←</button><span>${variant} (${names[variant]})</span><button onclick="location.search='${go(1)}'">→</button>`
+}
+const mkDraft = b => ({ title: b.title, subtitle: b.subtitle, authors: b.authors.join(', ') })
+const acts = {
+  open: isbn => { Object.assign(S, { open: isbn, edit: false, del: false, menu: false, note: '' }); S.draft = mkDraft(cur()); render() },
+  back: () => { S.open = null; render() },
+  edit: () => { S.edit = true; S.draft = mkDraft(cur()); render() },
+  cancel: () => { S.edit = false; render() },
+  save: () => { const b = cur(), d = S.draft; if (!d.title.trim()) { alert('Title required'); return } Object.assign(b, { title: d.title.trim(), subtitle: d.subtitle, authors: list(d.authors) }); S.edit = false; if (variant === 'C') S.open = null; render() },
+  addtag: t => { const b = cur(), x = t.trim().toLowerCase(); if (x && !b.tags.includes(x)) b.tags.push(x); render() },
+  rmtag: t => { const b = cur(); b.tags = b.tags.filter(x => x !== t); render() },
+  'del-on': () => { S.del = true; render() }, 'del-off': () => { S.del = false; render() },
+  menu: () => { S.menu = !S.menu; S.del = false; render() },
+  delete: () => { const t = cur().title; books.splice(books.indexOf(cur()), 1); S.open = null; S.note = `Deleted “${t}”`; render() },
+}
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-act]'); if (!el || e.target.tagName === 'INPUT') return
+  acts[el.dataset.act]?.(el.dataset.arg)
+})
+document.addEventListener('input', e => { // no re-render: keeps focus
+  const t = e.target
+  if (t.dataset.d) S.draft[t.dataset.d] = t.value
+})
+const note = s => { S.note = s; const n = document.getElementById('note'); if (n) n.textContent = s } // no re-render: keeps focus
+document.addEventListener('change', e => { // B: write through
+  const t = e.target; if (!t.dataset.w) return
+  const b = cur(), v = t.value
+  if (t.dataset.w === 'title' && !v.trim()) { return note('Title required') }
+  if (t.dataset.w === 'authors') b.authors = list(v); else b[t.dataset.w] = t.dataset.w === 'title' ? v.trim() : v
+  note('Saved ✓')
+})
+document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'newtag') { list(e.target.value).forEach(acts.addtag) } })
+render()
+</script>
