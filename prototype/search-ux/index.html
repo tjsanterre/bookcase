@@ -1,0 +1,171 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PROTOTYPE: search ux</title>
+<!-- PROTOTYPE, throwaway. Question: how do you find Books by text and Tag (list view, search box, Tag filters, results)?
+     ?variant=A|B|C or the bottom bar. A = search bar + tag chip row, B = one token box with suggestions + tag browse home,
+     C = list with filter sheet, sort and A-Z grouping. ~50 seeded Books, in-memory, row tap is a stub. -->
+<style>
+  * { box-sizing: border-box }
+  body { margin: 0; font: 16px system-ui, sans-serif; background: #f4f1ea; color: #222; padding-bottom: 70px }
+  #app { max-width: 480px; margin: 0 auto; padding: 12px }
+  h1 { font-size: 18px; margin: 4px 0 10px }
+  input[type=search], input[type=text] { font: inherit; padding: 10px; border: 1px solid #bbb; border-radius: 8px; width: 100%; background: #fff }
+  button { font: inherit; padding: 10px 14px; border: 0; border-radius: 8px; background: #2b5; color: #fff }
+  button.alt { background: #ddd; color: #222 }
+  .row { display: flex; gap: 8px; align-items: center; margin: 8px 0 }
+  .card { background: #fff; border-radius: 10px; padding: 8px 10px; margin: 6px 0; box-shadow: 0 1px 2px #0002 }
+  .cover { width: 32px; height: 46px; background: #9ab; border-radius: 3px; flex: none }
+  .muted { color: #777; font-size: 14px }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 12px; background: #dde8d8; font-size: 13px; margin: 2px 3px 2px 0; white-space: nowrap }
+  .tag.on { background: #2b5; color: #fff } .tag b { margin-left: 5px }
+  .chips { display: flex; gap: 4px; overflow-x: auto; padding: 4px 0; white-space: nowrap }
+  .chips .tag { font-size: 15px; padding: 5px 11px; flex: none }
+  .box { display: flex; flex-wrap: wrap; gap: 2px; align-items: center; background: #fff; border: 1px solid #bbb; border-radius: 8px; padding: 4px 6px }
+  .box input { flex: 1; min-width: 90px; border: 0; padding: 6px; outline: none }
+  .sug { background: #fff; border-radius: 8px; box-shadow: 0 2px 8px #0003; margin-top: 4px }
+  .sug div { padding: 10px; border-bottom: 1px solid #eee }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px }
+  .grid .card { margin: 0 }
+  .letter { position: sticky; top: 0; background: #f4f1ea; font-weight: 600; padding: 4px 0; color: #666 }
+  .sheet { position: fixed; left: 0; right: 0; bottom: 0; max-width: 480px; margin: auto; background: #fff; padding: 14px 14px 70px; border-radius: 14px 14px 0 0; box-shadow: 0 -4px 14px #0004; z-index: 5; max-height: 85vh; overflow: auto }
+  #bar { position: fixed; left: 50%; bottom: 8px; transform: translateX(-50%); background: #000; color: #fff; border-radius: 20px; padding: 6px 10px; display: flex; gap: 14px; align-items: center; z-index: 10; box-shadow: 0 2px 8px #0008 }
+  #bar button { background: none; padding: 4px 10px; font-size: 18px }
+</style>
+<div id="app"></div>
+<div id="bar"></div>
+<script>
+const RAW = `Dune|Frank Herbert|scifi,favourites
+Neuromancer|William Gibson|scifi
+Foundation|Isaac Asimov|scifi,classic
+I, Robot|Isaac Asimov|scifi,classic
+The Left Hand of Darkness|Ursula K. Le Guin|scifi,favourites
+A Wizard of Earthsea|Ursula K. Le Guin|fantasy,kids
+The Fellowship of the Ring|J. R. R. Tolkien|fantasy,reread
+The Hobbit|J. R. R. Tolkien|fantasy,kids,reread
+The Name of the Wind|Patrick Rothfuss|fantasy
+Fantastic Mr Fox|Roald Dahl|kids,roald dahl
+Matilda|Roald Dahl|kids,roald dahl
+The BFG|Roald Dahl|kids,roald dahl,lent out
+Charlie and the Chocolate Factory|Roald Dahl|kids,roald dahl
+Pride and Prejudice|Jane Austen|classic,favourites
+Emma|Jane Austen|classic
+Persuasion|Jane Austen|classic,to gift
+Jane Eyre|Charlotte Bronte|classic
+Wuthering Heights|Emily Bronte|classic
+Great Expectations|Charles Dickens|classic
+Bleak House|Charles Dickens|classic
+The Remains of the Day|Kazuo Ishiguro|literary
+Never Let Me Go|Kazuo Ishiguro|literary,scifi
+Sapiens|Yuval Noah Harari|history,nonfiction
+Guns, Germs, and Steel|Jared Diamond|history,nonfiction
+The Making of the Atomic Bomb|Richard Rhodes|history,nonfiction,favourites
+SPQR|Mary Beard|history,nonfiction
+Salt Fat Acid Heat|Samin Nosrat|cooking,nonfiction
+The Food Lab|J. Kenji Lopez-Alt|cooking,nonfiction,favourites
+Ottolenghi Simple|Yotam Ottolenghi|cooking
+Plenty|Yotam Ottolenghi|cooking,lent out
+The Big Sleep|Raymond Chandler|crime,classic
+Farewell, My Lovely|Raymond Chandler|crime,classic
+The Maltese Falcon|Dashiell Hammett|crime,classic
+Gone Girl|Gillian Flynn|crime
+In Cold Blood|Truman Capote|crime,nonfiction
+Steve Jobs|Walter Isaacson|biography,nonfiction
+Einstein|Walter Isaacson|biography,nonfiction
+Educated|Tara Westover|biography
+Born a Crime|Trevor Noah|biography,to gift
+Project Hail Mary|Andy Weir|scifi,favourites,to gift
+The Martian|Andy Weir|scifi
+Piranesi|Susanna Clarke|fantasy,favourites
+Jonathan Strange and Mr Norrell|Susanna Clarke|fantasy
+Matilda's Magic|Anon|kids
+The Dispossessed|Ursula K. Le Guin|scifi
+Kindred|Octavia Butler|scifi,literary
+Parable of the Sower|Octavia Butler|scifi
+The Goldfinch|Donna Tartt|literary
+Middlemarch|George Eliot|classic
+Cooking for One|Anon|cooking
+Untagged Paperback|Anon|
+Another Untagged Book|Anon|`
+const books = RAW.split('\n').map((l, i) => { const [title, author, tags] = l.split('|'); return { isbn: '97800' + String(10000 + i * 137).padStart(7, '0'), title, subtitle: '', authors: [author], tags: tags ? tags.split(',') : [], added: i } })
+const variant = (new URLSearchParams(location.search).get('variant') || 'A').toUpperCase()
+const S = { q: '', tags: [], any: false, sort: 'title', sheet: false, focus: false }
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+const tagCounts = () => { const m = {}; books.forEach(b => b.tags.forEach(t => m[t] = (m[t] || 0) + 1)); return Object.entries(m).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])) }
+
+// the decided mechanism: every word must appear in title/subtitle/authors/tags/isbn; selected tags filter on top
+function results() {
+  const words = S.q.toLowerCase().split(/\s+/).filter(Boolean)
+  let r = books.filter(b => {
+    const hay = [b.title, b.subtitle, b.authors.join(' '), b.tags.join(' '), b.isbn].join(' ').toLowerCase()
+    const tagOk = !S.tags.length || (S.any ? S.tags.some(t => b.tags.includes(t)) : S.tags.every(t => b.tags.includes(t)))
+    return tagOk && words.every(w => hay.includes(w))
+  })
+  if (S.sort === 'title') r.sort((a, b) => a.title.localeCompare(b.title))
+  if (S.sort === 'author') r.sort((a, b) => a.authors[0].localeCompare(b.authors[0]) || a.title.localeCompare(b.title))
+  if (S.sort === 'recent') r.sort((a, b) => b.added - a.added)
+  return r
+}
+const row = b => `<div class="card row" data-act="open" data-arg="${b.isbn}"><div class="cover"></div><div style="flex:1"><b>${esc(b.title)}</b><div class="muted">${esc(b.authors.join(', '))}</div><div>${b.tags.map(t => `<span class="tag ${S.tags.includes(t) ? 'on' : ''}">${esc(t)}</span>`).join('')}</div></div></div>`
+const empty = () => `<div class="card"><b>No Books match.</b><div class="row"><button class="alt" data-act="clear">Clear search and filters</button></div></div>`
+const resultList = r => r.length ? r.map(row).join('') : empty()
+
+// A: search bar on top, tag chip row as multi-select (all selected must match)
+function viewA() {
+  const r = results()
+  return `<h1>Bookcase <span class="muted">${r.length} of ${books.length}</span></h1>
+    <input id="q" type="search" placeholder="Search title, author, tag, ISBN" value="${esc(S.q)}">
+    <div class="chips">${S.tags.length ? `<span class="tag" data-act="clear-tags">clear ×</span>` : ''}${tagCounts().map(([t, n]) => `<span class="tag ${S.tags.includes(t) ? 'on' : ''}" data-act="tag" data-arg="${esc(t)}">${esc(t)} ${n}</span>`).join('')}</div>
+    ${resultList(r)}`
+}
+// B: one token box (selected tags are pills inside it); suggestions while typing; tag browse + recent when idle
+function viewB() {
+  const r = results(), idle = !S.q && !S.tags.length
+  const sugTags = S.q ? tagCounts().filter(([t]) => t.includes(S.q.toLowerCase()) && !S.tags.includes(t)).slice(0, 4) : []
+  return `<h1>Bookcase</h1>
+    <div class="box">${S.tags.map(t => `<span class="tag on">${esc(t)}<b data-act="tag" data-arg="${esc(t)}">×</b></span>`).join('')}<input id="q" type="text" placeholder="${S.tags.length ? 'add words…' : 'Search or pick a tag'}" value="${esc(S.q)}"></div>
+    ${sugTags.length ? `<div class="sug">${sugTags.map(([t, n]) => `<div data-act="tag" data-arg="${esc(t)}">Tag: <b>${esc(t)}</b> <span class="muted">(${n})</span></div>`).join('')}</div>` : ''}
+    ${idle ? `<div class="muted" style="margin:10px 0 4px">Browse by tag</div><div class="grid">${tagCounts().map(([t, n]) => `<div class="card" data-act="tag" data-arg="${esc(t)}"><b>${esc(t)}</b> <span class="muted">${n}</span></div>`).join('')}</div>
+      <div class="muted" style="margin:12px 0 4px">Recently added</div>${[...books].sort((a, b) => b.added - a.added).slice(0, 5).map(row).join('')}`
+      : `<div class="muted" style="margin:8px 0">${r.length} Book${r.length === 1 ? '' : 's'}</div>${resultList(r)}`}`
+}
+// C: search + Filters sheet (tag checklist with counts, any/all, sort); results grouped under letters when sorted by title
+function viewC() {
+  const r = results(), n = S.tags.length
+  const key = b => (S.sort === 'author' ? b.authors[0] : b.title)[0].toUpperCase()
+  const body = S.sort !== 'recent' && r.length
+    ? Object.entries(r.reduce((m, b) => { (m[key(b)] = m[key(b)] || []).push(b); return m }, {})).map(([l, bs]) => `<div class="letter">${l}</div>${bs.map(row).join('')}`).join('')
+    : resultList(r)
+  const sheet = S.sheet ? `<div class="sheet"><b>Filter by tag</b>
+      <div class="row"><button class="${S.any ? 'alt' : ''}" data-act="mode" data-arg="all">Has all</button><button class="${S.any ? '' : 'alt'}" data-act="mode" data-arg="any">Has any</button></div>
+      ${tagCounts().map(([t, c]) => `<div class="row" data-act="tag" data-arg="${esc(t)}"><span>${S.tags.includes(t) ? '☑' : '☐'}</span><span style="flex:1">${esc(t)}</span><span class="muted">${c}</span></div>`).join('')}
+      <div class="row"><button data-act="sheet-off">Show ${r.length} Books</button><button class="alt" data-act="clear-tags">Clear</button></div></div>` : ''
+  return `<h1>Bookcase <span class="muted">${r.length} of ${books.length}</span></h1>
+    <input id="q" type="search" placeholder="Search" value="${esc(S.q)}">
+    <div class="row"><button class="alt" data-act="sheet-on">Filters${n ? ` (${n})` : ''}</button>${S.tags.map(t => `<span class="tag on">${esc(t)}</span>`).join('')}<span style="flex:1"></span>
+      <select data-act-change="sort">${[['title', 'A–Z'], ['author', 'Author'], ['recent', 'Recent']].map(([v, l]) => `<option value="${v}" ${S.sort === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+    ${body}${sheet}`
+}
+const views = { A: viewA, B: viewB, C: viewC }
+function render() {
+  const ae = document.activeElement, keep = ae && ae.id === 'q', pos = keep ? ae.selectionStart : 0
+  document.getElementById('app').innerHTML = (views[variant] || viewA)()
+  if (keep || S.focus) { const q = document.getElementById('q'); q.focus(); q.setSelectionRange(pos || q.value.length, pos || q.value.length); S.focus = false }
+  const vs = ['A', 'B', 'C'], names = { A: 'Search + tag chips', B: 'Token box + browse', C: 'Filter sheet + sort' }
+  const go = d => `?variant=${vs[(vs.indexOf(variant) + d + 3) % 3]}`
+  document.getElementById('bar').innerHTML = `<button onclick="location.search='${go(-1)}'">←</button><span>${variant} (${names[variant]})</span><button onclick="location.search='${go(1)}'">→</button>`
+}
+const acts = {
+  open: isbn => alert('(stub) Book detail for ' + books.find(b => b.isbn === isbn).title),
+  tag: t => { S.tags = S.tags.includes(t) ? S.tags.filter(x => x !== t) : [...S.tags, t]; if (variant === 'B') { S.q = ''; S.focus = true } render() },
+  'clear-tags': () => { S.tags = []; render() },
+  clear: () => { S.q = ''; S.tags = []; render() },
+  mode: m => { S.any = m === 'any'; render() },
+  'sheet-on': () => { S.sheet = true; render() }, 'sheet-off': () => { S.sheet = false; render() },
+}
+document.addEventListener('click', e => { const el = e.target.closest('[data-act]'); if (el) acts[el.dataset.act]?.(el.dataset.arg) })
+document.addEventListener('input', e => { if (e.target.id === 'q') { S.q = e.target.value; render() } })
+document.addEventListener('change', e => { if (e.target.dataset.actChange === 'sort') { S.sort = e.target.value; render() } })
+document.addEventListener('keydown', e => { if (e.key === 'Backspace' && variant === 'B' && e.target.id === 'q' && !S.q && S.tags.length) { S.tags.pop(); render() } })
+render()
+</script>
