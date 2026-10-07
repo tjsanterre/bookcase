@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onActivated, ref, watch } from "vue";
-import { authorSortKey } from "../server/authorSort.ts";
+import { authorSortKey } from "../../server/authorSort.ts";
 
 interface Book {
   isbn: string;
