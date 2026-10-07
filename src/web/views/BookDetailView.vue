@@ -26,6 +26,8 @@ const error = ref("");
 const newTag = ref("");
 const confirmingDelete = ref(false);
 
+const date = (iso: string) => new Date(iso).toLocaleDateString();
+
 async function load() {
   const res = await fetch(`/api/books/${props.isbn}`);
   if (!res.ok) {
@@ -122,11 +124,11 @@ async function remove() {
       </p>
       <p v-if="error" role="alert">{{ error }}</p>
 
-      <div class="head">
+      <div class="book-header">
         <div class="head-cover">
           <BookCover :isbn="book.isbn" :title="book.title" :authors="book.authors" :has-cover="book.hasCover" />
         </div>
-        <div class="info">
+        <div class="book-fields">
           <form v-if="editing" @submit.prevent="save">
             <label>Title <input v-model="form.title" required /></label>
             <label>Subtitle <input v-model="form.subtitle" /></label>
@@ -149,8 +151,8 @@ async function remove() {
             <template v-if="book.year"><dt>Year</dt><dd>{{ book.year }}</dd></template>
             <template v-if="book.pageCount"><dt>Pages</dt><dd>{{ book.pageCount }}</dd></template>
             <dt>ISBN</dt><dd>{{ book.isbn }}</dd>
-            <dt>Added</dt><dd>{{ book.addedAt.slice(0, 10) }}</dd>
-            <dt>Updated</dt><dd>{{ book.updatedAt.slice(0, 10) }}</dd>
+            <dt>Added</dt><dd>{{ date(book.addedAt) }}</dd>
+            <dt>Updated</dt><dd>{{ date(book.updatedAt) }}</dd>
             <dt>Tags</dt>
             <dd class="tags">
               <button v-for="t in book.tags" :key="t" class="chip" :aria-label="`Remove ${t}`" @click="setTags(book.tags.filter((x) => x !== t))">{{ t }} ✕</button>
@@ -168,15 +170,15 @@ async function remove() {
 .detail { padding: 0.75rem; display: flex; flex-direction: column; gap: 0.75rem; }
 .detail label { display: flex; flex-direction: column; }
 .toolbar { display: flex; gap: 0.5rem; }
-.danger { color: #b3261e; border-color: #b3261e; }
-.head { display: flex; flex-wrap: wrap; gap: 1.5rem; align-items: flex-start; }
+.danger { color: var(--danger); border-color: var(--danger); }
+.book-header { display: flex; flex-wrap: wrap; gap: 1.5rem; align-items: flex-start; }
 .head-cover { flex: 0 0 12rem; max-width: 100%; }
-.info { flex: 1 1 16rem; min-width: 0; overflow-wrap: anywhere; }
-.info h1 { margin: 0; }
+.book-fields { flex: 1 1 16rem; min-width: 0; overflow-wrap: anywhere; }
+.book-fields h1 { margin: 0; }
 .subtitle { margin: 0.25rem 0 0; color: var(--muted); }
-.info dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.4rem 1rem; margin: 1rem 0 0; }
-.info dt { color: var(--muted); }
-.info dd { margin: 0; }
+.book-fields dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.4rem 1rem; margin: 1rem 0 0; }
+.book-fields dt { color: var(--muted); }
+.book-fields dd { margin: 0; }
 .tags input { min-width: 0; max-width: 100%; }
 .tags { display: flex; flex-wrap: wrap; gap: 0.25rem; }
 .chip.suggestion { border-style: dashed; }
