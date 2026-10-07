@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watchEffect } from "vue";
+import BookCover from "../components/BookCover.vue";
 
 interface Book {
   isbn: string;
@@ -10,6 +11,9 @@ interface Book {
   year: number | null;
   pageCount: number | null;
   tags: string[];
+  hasCover: boolean;
+  addedAt: string;
+  updatedAt: string;
 }
 
 const props = defineProps<{ isbn: string }>();
@@ -21,7 +25,8 @@ const form = ref({ title: "", subtitle: "", authors: "" });
 const error = ref("");
 const newTag = ref("");
 const confirmingDelete = ref(false);
-const noCover = ref(false);
+
+const date = (iso: string) => new Date(iso).toLocaleDateString();
 
 async function load() {
   const res = await fetch(`/api/books/${props.isbn}`);
@@ -105,46 +110,76 @@ async function remove() {
 
 <template>
   <main class="detail">
-    <button @click="back">← Back</button>
     <p v-if="missing">Book not found</p>
     <template v-else-if="book">
-      <img v-if="!noCover" :src="`/api/books/${book.isbn}/cover`" alt="Cover" width="120" @error="noCover = true" />
-
-      <form v-if="editing" @submit.prevent="save">
-        <label>Title <input v-model="form.title" required /></label>
-        <label>Subtitle <input v-model="form.subtitle" /></label>
-        <label>Authors (comma separated) <input v-model="form.authors" /></label>
-        <button type="submit">Save</button>
-        <button type="button" @click="editing = false">Cancel</button>
-      </form>
-      <template v-else>
-        <h1>{{ book.title }}</h1>
-        <p v-if="book.subtitle">{{ book.subtitle }}</p>
-        <p>{{ book.authors.join(", ") }}</p>
-        <button @click="startEdit">Edit details</button>
-      </template>
-      <p>ISBN {{ book.isbn }}</p>
-      <p v-if="error" role="alert">{{ error }}</p>
-
-      <div class="tags">
-        <button v-for="t in book.tags" :key="t" class="chip" :aria-label="`Remove ${t}`" @click="setTags(book.tags.filter((x) => x !== t))">{{ t }} ✕</button>
-        <input v-model="newTag" placeholder="Add tag" aria-label="Add tag" @keydown.enter.prevent="addTag(newTag)" />
-        <button v-for="t in suggestions()" :key="t.name" class="chip suggestion" @click="addTag(t.name)">+ {{ t.name }}</button>
+      <div class="toolbar">
+        <button @click="back">← Back</button>
+        <button v-if="!editing" @click="startEdit">Edit details</button>
+        <button class="danger" @click="confirmingDelete = true">Delete</button>
       </div>
-
-      <p v-if="!confirmingDelete"><a href="#" @click.prevent="confirmingDelete = true">Delete this book</a></p>
-      <p v-else>
+      <p v-if="confirmingDelete" class="confirm">
         Delete this Book permanently, no undo?
-        <button @click="remove">Delete</button>
+        <button class="danger" @click="remove">Delete</button>
         <button @click="confirmingDelete = false">Cancel</button>
       </p>
+      <p v-if="error" role="alert">{{ error }}</p>
+
+      <div class="book-header">
+        <div class="head-cover">
+          <BookCover :isbn="book.isbn" :title="book.title" :authors="book.authors" :has-cover="book.hasCover" />
+        </div>
+        <div class="book-fields">
+          <form v-if="editing" @submit.prevent="save">
+            <label>Title <input v-model="form.title" required /></label>
+            <label>Subtitle <input v-model="form.subtitle" /></label>
+            <label>Authors (comma separated) <input v-model="form.authors" /></label>
+            <div>
+              <button type="submit">Save</button>
+              <button type="button" @click="editing = false">Cancel</button>
+            </div>
+          </form>
+          <template v-else>
+            <h1>{{ book.title }}</h1>
+            <p v-if="book.subtitle" class="subtitle">{{ book.subtitle }}</p>
+          </template>
+          <dl>
+            <template v-if="!editing && book.authors.length">
+              <dt>{{ book.authors.length > 1 ? "Authors" : "Author" }}</dt>
+              <dd>{{ book.authors.join(", ") }}</dd>
+            </template>
+            <template v-if="book.publisher"><dt>Publisher</dt><dd>{{ book.publisher }}</dd></template>
+            <template v-if="book.year"><dt>Year</dt><dd>{{ book.year }}</dd></template>
+            <template v-if="book.pageCount"><dt>Pages</dt><dd>{{ book.pageCount }}</dd></template>
+            <dt>ISBN</dt><dd>{{ book.isbn }}</dd>
+            <dt>Added</dt><dd>{{ date(book.addedAt) }}</dd>
+            <dt>Updated</dt><dd>{{ date(book.updatedAt) }}</dd>
+            <dt>Tags</dt>
+            <dd class="tags">
+              <button v-for="t in book.tags" :key="t" class="chip" :aria-label="`Remove ${t}`" @click="setTags(book.tags.filter((x) => x !== t))">{{ t }} ✕</button>
+              <input v-model="newTag" placeholder="Add tag" aria-label="Add tag" @keydown.enter.prevent="addTag(newTag)" />
+              <button v-for="t in suggestions()" :key="t.name" class="chip suggestion" @click="addTag(t.name)">+ {{ t.name }}</button>
+            </dd>
+          </dl>
+        </div>
+      </div>
     </template>
   </main>
 </template>
 
 <style>
-.detail { padding: 0.5rem; display: flex; flex-direction: column; gap: 0.5rem; align-items: flex-start; }
+.detail { padding: 0.75rem; display: flex; flex-direction: column; gap: 0.75rem; }
 .detail label { display: flex; flex-direction: column; }
+.toolbar { display: flex; gap: 0.5rem; }
+.danger { color: var(--danger); border-color: var(--danger); }
+.book-header { display: flex; flex-wrap: wrap; gap: 1.5rem; align-items: flex-start; }
+.head-cover { flex: 0 0 12rem; max-width: 100%; }
+.book-fields { flex: 1 1 16rem; min-width: 0; overflow-wrap: anywhere; }
+.book-fields h1 { margin: 0; }
+.subtitle { margin: 0.25rem 0 0; color: var(--muted); }
+.book-fields dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.4rem 1rem; margin: 1rem 0 0; }
+.book-fields dt { color: var(--muted); }
+.book-fields dd { margin: 0; }
+.tags input { min-width: 0; max-width: 100%; }
 .tags { display: flex; flex-wrap: wrap; gap: 0.25rem; }
 .chip.suggestion { border-style: dashed; }
 </style>
