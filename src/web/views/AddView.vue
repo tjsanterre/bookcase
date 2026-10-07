@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { nextTick, onActivated, onDeactivated, ref, watch } from "vue";
 import { BarcodeDetector } from "barcode-detector/ponyfill";
+import BookCover from "../components/BookCover.vue";
 
 interface Book {
   isbn: string;
   title: string;
+  authors: string[];
+  hasCover: boolean;
 }
 type AddResult = { status: "saved"; book: Book } | { status: "duplicate"; book: Book } | { status: "manual"; isbn: string };
 
@@ -17,6 +20,8 @@ const typed = ref("");
 const error = ref("");
 const notice = ref("");
 const cameraError = ref("");
+const cameraOn = ref(false);
+const cameraStarting = ref(false);
 const added = ref<Book[]>([]);
 const pending = ref(false);
 const duplicate = ref<Book | null>(null);
@@ -103,17 +108,33 @@ let generation = 0;
 
 async function startCamera() {
   const mine = ++generation;
+  cameraError.value = "";
+  cameraStarting.value = true;
   let s: MediaStream;
   try {
     s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
   } catch {
     cameraError.value = "Camera unavailable; type the ISBN instead";
+    cameraStarting.value = false;
     return;
   }
+  cameraStarting.value = false;
   if (mine !== generation) return s.getTracks().forEach((t) => t.stop());
   stream = s;
+  cameraOn.value = true;
+  await nextTick();
+  if (mine !== generation) return;
   video.value!.srcObject = s;
-  await video.value!.play();
+  try {
+    await video.value!.play();
+  } catch {
+    if (mine === generation) {
+      stopCamera();
+      cameraError.value = "Camera unavailable; type the ISBN instead";
+    }
+    return;
+  }
+  if (mine !== generation) return;
   const detector = new BarcodeDetector({ formats: ["ean_13"] });
   let busy = false;
   timer = setInterval(async () => {
@@ -132,36 +153,56 @@ async function startCamera() {
 
 function stopCamera() {
   generation++;
+  cameraStarting.value = false;
   clearInterval(timer);
   stream?.getTracks().forEach((t) => t.stop());
   stream = undefined;
+  cameraOn.value = false;
   lastSeen.clear();
 }
 
-onActivated(() => {
-  startCamera();
-  input.value?.focus();
-});
+onActivated(() => input.value?.focus());
 onDeactivated(stopCamera);
 </script>
 
 <template>
   <main class="add">
-    <video ref="video" playsinline muted />
-    <p v-if="cameraError">{{ cameraError }}</p>
-    <form @submit.prevent="submitTyped">
-      <input ref="input" v-model="typed" inputmode="numeric" placeholder="Type or scan an ISBN" aria-label="ISBN" autofocus />
-      <button type="submit">Add</button>
-    </form>
+    <p>Add a book by its ISBN.</p>
+
+    <section class="method">
+      <h2>Camera</h2>
+      <button type="button" :disabled="cameraStarting" @click="cameraOn ? stopCamera() : startCamera()">{{ cameraOn ? "Stop camera" : "Start camera" }}</button>
+      <p v-if="cameraError" role="alert">{{ cameraError }}</p>
+      <template v-if="cameraOn">
+        <p class="hint">Point the camera at the barcode on the back cover (starts with 978 or 979).</p>
+        <video ref="video" playsinline muted />
+      </template>
+    </section>
+
+    <p class="or">or</p>
+
+    <section class="method">
+      <h2>Type ISBN</h2>
+      <form @submit.prevent="submitTyped">
+        <input ref="input" v-model="typed" inputmode="numeric" placeholder="ISBN, 10 or 13 digits" aria-label="ISBN" autofocus />
+        <button type="submit">Add</button>
+      </form>
+      <p class="hint">A USB barcode scanner works here too.</p>
+    </section>
+
     <p v-if="error" role="alert">{{ error }}</p>
     <p v-if="notice" role="status">{{ notice }}</p>
     <p v-if="pending" role="status">Looking up…</p>
 
     <section v-if="added.length">
       <h2>Just added</h2>
-      <ul>
+      <ul class="added">
         <li v-for="b in added" :key="b.isbn">
-          <a :href="`#/books/${b.isbn}`">{{ b.title }}</a>
+          <a class="thumb" :href="`#/books/${b.isbn}`" aria-hidden="true" tabindex="-1"><BookCover :isbn="b.isbn" :title="b.title" :authors="b.authors" :has-cover="b.hasCover" /></a>
+          <a class="info" :href="`#/books/${b.isbn}`">
+            <strong>{{ b.title }}</strong>
+            <span v-if="b.authors.length">{{ b.authors.join(", ") }}</span>
+          </a>
           <button @click="undo(b)">Undo</button>
         </li>
       </ul>
@@ -186,8 +227,18 @@ onDeactivated(stopCamera);
 
 <style>
 .add { padding: 0.5rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.add h2 { margin: 0; font-size: 1rem; }
+.add .method { display: flex; flex-direction: column; align-items: flex-start; gap: 0.5rem; padding: 0.75rem; border: 1px solid var(--border); border-radius: 0.5rem; }
+.add .method form { align-self: stretch; }
+.add .hint { margin: 0; color: var(--muted); font-size: 0.875rem; }
+.add .or { margin: 0; text-align: center; color: var(--muted); }
 .add form:not(.sheet) { display: flex; gap: 0.5rem; }
 .add form:not(.sheet) input { flex: 1; }
 .add video { width: 100%; max-height: 40vh; background: #000; }
+.added { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.added li { display: flex; align-items: center; gap: 0.75rem; }
+.added .thumb { flex: 0 0 3rem; }
+.added .info { flex: 1; min-width: 0; display: flex; flex-direction: column; color: inherit; text-decoration: none; }
+.added .info span { color: var(--muted); font-size: 0.875rem; }
 .sheet { position: fixed; inset: auto 0 0 0; padding: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
 </style>
