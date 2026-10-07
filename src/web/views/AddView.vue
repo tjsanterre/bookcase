@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onActivated, onDeactivated, ref, watch } from "vue";
+import { nextTick, onDeactivated, ref, watch } from "vue";
 import { BarcodeDetector } from "barcode-detector/ponyfill";
 import BookCover from "../components/BookCover.vue";
 
@@ -14,7 +14,6 @@ type AddResult = { status: "saved"; book: Book } | { status: "duplicate"; book: 
 const REPEAT_MS = 3000;
 
 const video = ref<HTMLVideoElement>();
-const input = ref<HTMLInputElement>();
 const manualError = ref("");
 const typed = ref("");
 const error = ref("");
@@ -65,12 +64,10 @@ async function submitTyped() {
   if (isbn && (await add(isbn))) typed.value = "";
 }
 
-// Keeps a USB scanner's next read landing in the input
 watch([duplicate, manual], ([d, m]) => {
   if (d || m) return;
   notice.value = "";
   manualError.value = "";
-  nextTick(() => input.value?.focus());
 });
 
 async function undo(book: Book) {
@@ -161,11 +158,11 @@ function stopCamera() {
   lastSeen.clear();
 }
 
-onActivated(() => input.value?.focus());
 onDeactivated(() => {
   stopCamera();
   duplicate.value = null;
   manual.value = null;
+  added.value = [];
 });
 </script>
 
@@ -188,7 +185,7 @@ onDeactivated(() => {
     <section v-if="!cameraOn" class="method">
       <h2>Type ISBN</h2>
       <form @submit.prevent="submitTyped">
-        <input ref="input" v-model="typed" inputmode="numeric" placeholder="ISBN, 10 or 13 digits" aria-label="ISBN" autofocus />
+        <input v-model="typed" inputmode="numeric" placeholder="ISBN, 10 or 13 digits" aria-label="ISBN" />
         <button type="submit">Add</button>
       </form>
       <p class="hint">A USB barcode scanner works here too.</p>
