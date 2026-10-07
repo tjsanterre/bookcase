@@ -5,9 +5,9 @@
   --text: #2a2420;
   --muted: #7a6f66;
   --border: #e4ddd3;
-  --accent: #b4532a;
+  --accent: #1f6f78;
   --accent-text: #fff;
-  --accent-soft: #f6e3d9;
+  --accent-soft: #d9ecee;
   --header-h: 3.25rem;
 }
 @media (prefers-color-scheme: dark) {
@@ -17,9 +17,9 @@
     --text: #f1ebe4;
     --muted: #a39789;
     --border: #3a332e;
-    --accent: #e0805a;
+    --accent: #5fb8c1;
     --accent-text: #1c1917;
-    --accent-soft: #3d2a20;
+    --accent-soft: #1b3235;
   }
 }
 
