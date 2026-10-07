@@ -183,9 +183,9 @@ onDeactivated(() => {
       </template>
     </section>
 
-    <p class="or">or</p>
+    <p v-if="!cameraOn" class="or">or</p>
 
-    <section class="method">
+    <section v-if="!cameraOn" class="method">
       <h2>Type ISBN</h2>
       <form @submit.prevent="submitTyped">
         <input ref="input" v-model="typed" inputmode="numeric" placeholder="ISBN, 10 or 13 digits" aria-label="ISBN" autofocus />
