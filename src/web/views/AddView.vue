@@ -162,7 +162,11 @@ function stopCamera() {
 }
 
 onActivated(() => input.value?.focus());
-onDeactivated(stopCamera);
+onDeactivated(() => {
+  stopCamera();
+  duplicate.value = null;
+  manual.value = null;
+});
 </script>
 
 <template>
