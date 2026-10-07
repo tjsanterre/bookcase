@@ -16,10 +16,10 @@ _Avoid_: Item, title, copy
 A free-form, lowercase label the user attaches to a Book to group and find it. Flat, with no hierarchy.
 _Avoid_: Category, genre, subject (a subject is Open Library's own label, not the user's)
 
-**Scan**:
-The act of adding a Book to the Bookcase by supplying its ISBN, by camera barcode read or by typing it.
-_Avoid_: Import, lookup
+**Add**:
+The act of putting a Book in the Bookcase by supplying its ISBN, by camera, typed, or with a USB scanner.
+_Avoid_: Scan (a barcode read is only one way to supply the ISBN), import, lookup
 
 **ISBN**:
-The identifier a Scan supplies; the lookup key for a Book's details.
+The identifier an Add supplies; the lookup key for a Book's details.
 _Avoid_: Barcode (the barcode is only how an ISBN is read)
