@@ -67,6 +67,7 @@ const groups = computed(() => {
 <template>
   <header class="bar">
     <input v-model="q" type="search" placeholder="Search books" aria-label="Search books" />
+    <a href="#/scan">Scan</a>
     <button @click="sheetOpen = true">Filters{{ selected.length ? ` (${selected.length})` : "" }}</button>
     <select v-model="sort" aria-label="Sort">
       <option value="title">A–Z</option>
