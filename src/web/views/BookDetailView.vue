@@ -169,14 +169,15 @@ async function remove() {
 .detail label { display: flex; flex-direction: column; }
 .toolbar { display: flex; gap: 0.5rem; }
 .danger { color: #b3261e; border-color: #b3261e; }
-.head { display: flex; gap: 1.5rem; align-items: flex-start; }
-.head-cover { flex: 0 0 min(12rem, 40vw); }
-.info { flex: 1; min-width: 0; }
+.head { display: flex; flex-wrap: wrap; gap: 1.5rem; align-items: flex-start; }
+.head-cover { flex: 0 0 12rem; max-width: 100%; }
+.info { flex: 1 1 16rem; min-width: 0; overflow-wrap: anywhere; }
 .info h1 { margin: 0; }
 .subtitle { margin: 0.25rem 0 0; color: var(--muted); }
-.info dl { display: grid; grid-template-columns: max-content 1fr; gap: 0.4rem 1rem; margin: 1rem 0 0; }
+.info dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.4rem 1rem; margin: 1rem 0 0; }
 .info dt { color: var(--muted); }
 .info dd { margin: 0; }
+.tags input { min-width: 0; max-width: 100%; }
 .tags { display: flex; flex-wrap: wrap; gap: 0.25rem; }
 .chip.suggestion { border-style: dashed; }
 </style>
