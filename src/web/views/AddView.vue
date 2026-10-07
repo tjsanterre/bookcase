@@ -6,7 +6,7 @@ interface Book {
   isbn: string;
   title: string;
 }
-type Scan = { status: "saved"; book: Book } | { status: "duplicate"; book: Book } | { status: "manual"; isbn: string };
+type AddResult = { status: "saved"; book: Book } | { status: "duplicate"; book: Book } | { status: "manual"; isbn: string };
 
 const REPEAT_MS = 3000;
 
@@ -22,16 +22,16 @@ const pending = ref(false);
 const duplicate = ref<Book | null>(null);
 const manual = ref<{ isbn: string; title: string; authors: string } | null>(null);
 
-// A lookup or open sheet blocks further scans; camera reads that aren't ISBNs are dropped silently
-async function scan(isbn: string, fromCamera = false): Promise<boolean> {
+// A lookup or open sheet blocks further Adds; camera reads that aren't ISBNs are dropped silently
+async function add(isbn: string, fromCamera = false): Promise<boolean> {
   if (pending.value || duplicate.value || manual.value) {
-    notice.value = "Finish the current Scan first";
+    notice.value = "Finish the current Add first";
     return false;
   }
   notice.value = "";
   pending.value = true;
   try {
-    const res = await fetch("/api/scan", {
+    const res = await fetch("/api/add", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ isbn }),
@@ -42,7 +42,7 @@ async function scan(isbn: string, fromCamera = false): Promise<boolean> {
       return false;
     }
     error.value = "";
-    const r = body as Scan;
+    const r = body as AddResult;
     if (r.status === "saved") added.value.unshift(r.book);
     else if (r.status === "duplicate") duplicate.value = r.book;
     else manual.value = { isbn: r.isbn, title: "", authors: "" };
@@ -57,7 +57,7 @@ async function scan(isbn: string, fromCamera = false): Promise<boolean> {
 
 async function submitTyped() {
   const isbn = typed.value.trim();
-  if (isbn && (await scan(isbn))) typed.value = "";
+  if (isbn && (await add(isbn))) typed.value = "";
 }
 
 // Keeps a USB scanner's next read landing in the input
@@ -124,7 +124,7 @@ async function startCamera() {
     for (const { rawValue } of codes) {
       const seen = lastSeen.get(rawValue);
       lastSeen.set(rawValue, now);
-      if (seen === undefined || now - seen > REPEAT_MS) scan(rawValue, true);
+      if (seen === undefined || now - seen > REPEAT_MS) add(rawValue, true);
     }
     busy = false;
   }, 250);
@@ -146,8 +146,7 @@ onDeactivated(stopCamera);
 </script>
 
 <template>
-  <main class="scan">
-    <a href="#/">← Books</a>
+  <main class="add">
     <video ref="video" playsinline muted />
     <p v-if="cameraError">{{ cameraError }}</p>
     <form @submit.prevent="submitTyped">
@@ -171,7 +170,7 @@ onDeactivated(stopCamera);
     <div v-if="duplicate" class="sheet" role="dialog">
       <p>“{{ duplicate.title }}” is already in your Bookcase.</p>
       <a :href="`#/books/${duplicate.isbn}`">Open it</a>
-      <button @click="duplicate = null">Keep scanning</button>
+      <button @click="duplicate = null">Keep adding</button>
     </div>
 
     <form v-if="manual" class="sheet" role="dialog" @submit.prevent="saveManual">
@@ -186,9 +185,9 @@ onDeactivated(stopCamera);
 </template>
 
 <style>
-.scan { padding: 0.5rem; display: flex; flex-direction: column; gap: 0.5rem; }
-.scan form:not(.sheet) { display: flex; gap: 0.5rem; }
-.scan form:not(.sheet) input { flex: 1; }
-.scan video { width: 100%; max-height: 40vh; background: #000; }
-.sheet { position: fixed; inset: auto 0 0 0; padding: 1rem; background: Canvas; border-top: 1px solid; display: flex; flex-direction: column; gap: 0.5rem; }
+.add { padding: 0.5rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.add form:not(.sheet) { display: flex; gap: 0.5rem; }
+.add form:not(.sheet) input { flex: 1; }
+.add video { width: 100%; max-height: 40vh; background: #000; }
+.sheet { position: fixed; inset: auto 0 0 0; padding: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
 </style>

@@ -50,7 +50,7 @@ export function createApp(opts: {
   });
 
   // Outcomes: saved (hit), duplicate (already in the Bookcase), manual (Open Library has no usable edition)
-  app.post("/api/scan", async (c) => {
+  app.post("/api/add", async (c) => {
     const raw = ((await readJson(c)) as { isbn?: unknown } | null)?.isbn;
     const isbn = typeof raw === "string" ? normalizeIsbn(raw) : null;
     if (!isbn) throw new InvalidInput("isbn is not a valid ISBN-10 or ISBN-13");
@@ -58,9 +58,9 @@ export function createApp(opts: {
     if (existing) return c.json({ status: "duplicate", book: existing });
     const found = await lookup(isbn);
     if (!found) return c.json({ status: "manual", isbn });
-    const book = store.create(found.details);
+    store.create(found.details);
     if (found.cover) store.setCover(isbn, found.cover.contentType, found.cover.data);
-    return c.json({ status: "saved", book }, 201);
+    return c.json({ status: "saved", book: store.get(isbn) }, 201);
   });
 
   app.get("/api/books/:isbn", (c) => {
@@ -86,7 +86,11 @@ export function createApp(opts: {
   app.get("/api/books/:isbn/cover", (c) => {
     const cover = store.getCover(isbnParam(c.req.param("isbn")));
     if (!cover) return c.json({ error: "not found" }, 404);
-    return c.body(new Uint8Array(cover.data), 200, { "Content-Type": cover.contentType });
+    // A cover only changes when its Book is deleted and re-added, so browsers may cache it for a year
+    return c.body(new Uint8Array(cover.data), 200, {
+      "Content-Type": cover.contentType,
+      "Cache-Control": "public, max-age=31536000",
+    });
   });
 
   app.get("/api/tags", (c) => c.json(store.listTags()));

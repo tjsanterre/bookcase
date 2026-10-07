@@ -15,6 +15,7 @@ export interface BookDetails {
 
 export interface Book extends BookDetails {
   tags: string[];
+  hasCover: boolean;
   addedAt: string;
   updatedAt: string;
 }
@@ -106,6 +107,7 @@ export function createBookStore(db: Database.Database) {
   const tagsFor = db.prepare<[number], { name: string }>(
     "SELECT t.name FROM tag t JOIN book_tag bt ON bt.tag_id = t.id WHERE bt.book_id = ? ORDER BY t.name",
   );
+  const coverFor = db.prepare<[number], { one: 1 }>("SELECT 1 AS one FROM cover WHERE book_id = ?");
   const deleteBook = db.prepare("DELETE FROM book WHERE id = ?");
   const clearBookTags = db.prepare("DELETE FROM book_tag WHERE book_id = ?");
   const insertTag = db.prepare("INSERT OR IGNORE INTO tag (name) VALUES (?)");
@@ -133,6 +135,7 @@ export function createBookStore(db: Database.Database) {
       year: row.year,
       pageCount: row.page_count,
       tags: tagsFor.all(row.id).map((t) => t.name),
+      hasCover: coverFor.get(row.id) !== undefined,
       addedAt: row.added_at,
       updatedAt: row.updated_at,
     };

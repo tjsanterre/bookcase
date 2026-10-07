@@ -114,6 +114,15 @@ test("GET /api/books/:isbn/cover serves the stored image and 404s without one", 
   const res = await send("GET", "/api/books/9780306406157/cover");
   expect(res.headers.get("Content-Type")).toBe("image/png");
   expect([...new Uint8Array(await res.arrayBuffer())]).toEqual([1, 2, 3]);
+  expect(res.headers.get("Cache-Control")).toMatch(/max-age=\d{6,}/);
+});
+
+test("GET /api/books flags which Books have a cover", async () => {
+  await send("POST", "/api/books", dune);
+  await send("POST", "/api/books", { ...dune, isbn: "9780441172719", title: "Neuromancer" });
+  createBookStore(db).setCover(dune.isbn, "image/png", Buffer.from([1]));
+  const { books } = (await (await send("GET", "/api/books")).json()) as { books: { title: string; hasCover: boolean }[] };
+  expect(books.map((b) => [b.title, b.hasCover])).toEqual([["Dune", true], ["Neuromancer", false]]);
 });
 
 describe("GET /api/books", () => {
