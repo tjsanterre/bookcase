@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onActivated, ref, watch } from "vue";
 import { authorSortKey } from "../../server/authorSort.ts";
+import BookCover from "../components/BookCover.vue";
 
 interface Book {
   isbn: string;
@@ -88,9 +89,8 @@ const groups = computed(() => {
   <section v-for="g in groups" :key="g.name">
     <h2 class="sticky">{{ g.name }}</h2>
     <div class="shelf">
-      <a v-for="b in g.books" :key="b.isbn" class="book" :href="`#/books/${b.isbn}`" :title="`${b.title} — ${b.authors.join(', ')}`">
-        <img v-if="b.hasCover" class="cover" :src="`/api/books/${b.isbn}/cover`" alt="" loading="lazy" />
-        <span v-else class="cover placeholder" aria-hidden="true">{{ b.title.charAt(0).toUpperCase() }}</span>
+      <a v-for="b in g.books" :key="b.isbn" class="book" :href="`#/books/${b.isbn}`">
+        <BookCover :isbn="b.isbn" :title="b.title" :authors="b.authors" :has-cover="b.hasCover" lazy />
       </a>
     </div>
   </section>
@@ -116,8 +116,6 @@ const groups = computed(() => {
 .sticky { position: sticky; top: var(--header-h); margin: 0; padding: 0.25rem 0.75rem; font-size: 0.9rem; color: var(--accent); background: var(--bg); border-bottom: 1px solid var(--border); }
 .shelf { display: grid; grid-template-columns: repeat(auto-fill, minmax(5.5rem, 1fr)); gap: 1rem 0.75rem; padding: 0.75rem; border-bottom: 1px solid var(--border); }
 .book { display: block; min-width: 0; color: inherit; text-decoration: none; }
-.cover { width: 100%; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 0.25rem; background: var(--accent-soft); box-shadow: 0 1px 3px rgb(0 0 0 / 0.25); }
-.placeholder { display: grid; place-items: center; font-size: 2rem; font-weight: 700; color: var(--accent); }
 .empty { text-align: center; }
 .sheet { position: fixed; inset: auto 0 0 0; max-height: 70vh; overflow: auto; display: flex; flex-direction: column; gap: 0.5rem; padding: 1rem; }
 </style>
