@@ -87,14 +87,12 @@ const groups = computed(() => {
   </div>
   <section v-for="g in groups" :key="g.name">
     <h2 class="sticky">{{ g.name }}</h2>
-    <a v-for="b in g.books" :key="b.isbn" class="row" :href="`#/books/${b.isbn}`" :title="`${b.title} — ${b.authors.join(', ')}`">
-      <img v-if="b.hasCover" class="cover" :src="`/api/books/${b.isbn}/cover`" alt="" loading="lazy" />
-      <span v-else class="cover placeholder" aria-hidden="true">{{ b.title.charAt(0).toUpperCase() }}</span>
-      <!-- <span class="text">
-        <strong>{{ b.title }}</strong>
-        <span>{{ b.authors.join(", ") }}</span>
-      </span> -->
-    </a>
+    <div class="shelf">
+      <a v-for="b in g.books" :key="b.isbn" class="book" :href="`#/books/${b.isbn}`" :title="`${b.title} — ${b.authors.join(', ')}`">
+        <img v-if="b.hasCover" class="cover" :src="`/api/books/${b.isbn}/cover`" alt="" loading="lazy" />
+        <span v-else class="cover placeholder" aria-hidden="true">{{ b.title.charAt(0).toUpperCase() }}</span>
+      </a>
+    </div>
   </section>
 
   <div v-if="sheetOpen" class="sheet" role="dialog" aria-label="Filters">
@@ -116,12 +114,10 @@ const groups = computed(() => {
 .pills button { margin: 0 0.25rem 0.25rem 0; background: var(--accent-soft); border-color: var(--accent-soft); }
 .count { margin: 0.25rem 0.75rem; color: var(--muted); }
 .sticky { position: sticky; top: var(--header-h); margin: 0; padding: 0.25rem 0.75rem; font-size: 0.9rem; color: var(--accent); background: var(--bg); border-bottom: 1px solid var(--border); }
-.row { display: flex; gap: 0.75rem; align-items: center; padding: 0.5rem 0.75rem; color: inherit; text-decoration: none; border-bottom: 1px solid var(--border); }
-.row:hover { background: var(--accent-soft); }
-.row .text { display: flex; flex-direction: column; min-width: 0; }
-.row .text span { color: var(--muted); font-size: 0.9rem; }
-.cover { flex: none; width: 72px; height: 108px; object-fit: cover; border-radius: 0.25rem; background: var(--accent-soft); box-shadow: 0 1px 3px rgb(0 0 0 / 0.25); }
-.placeholder { display: grid; place-items: center; font-size: 1.5rem; font-weight: 700; color: var(--accent); }
+.shelf { display: grid; grid-template-columns: repeat(auto-fill, minmax(5.5rem, 1fr)); gap: 1rem 0.75rem; padding: 0.75rem; border-bottom: 1px solid var(--border); }
+.book { display: block; min-width: 0; color: inherit; text-decoration: none; }
+.cover { width: 100%; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 0.25rem; background: var(--accent-soft); box-shadow: 0 1px 3px rgb(0 0 0 / 0.25); }
+.placeholder { display: grid; place-items: center; font-size: 2rem; font-weight: 700; color: var(--accent); }
 .empty { text-align: center; }
 .sheet { position: fixed; inset: auto 0 0 0; max-height: 70vh; overflow: auto; display: flex; flex-direction: column; gap: 0.5rem; padding: 1rem; }
 </style>
