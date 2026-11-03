@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { Auth } from "./auth.ts";
 import type { Db } from "./db.ts";
 import { createBookStore, DuplicateIsbn, InvalidInput, parseBookDetails, parseTags } from "./books.ts";
 import { normalizeIsbn } from "./isbn.ts";
@@ -7,12 +8,21 @@ import { normalizeTag } from "./tags.ts";
 
 export function createApp(opts: {
   db: Db;
+  /** Builds Better Auth; `withProvider` is true only for the sign-in routes. */
+  auth: (withProvider: boolean) => Auth;
   lookup?: (isbn: string) => Promise<Lookup | undefined>;
 }) {
   const lookup = opts.lookup ?? createOpenLibrary(fetch, "Bookcase");
   const store = createBookStore(opts.db);
   const app = new Hono();
   app.get("/api/health", (c) => c.json({ ok: true }));
+  app.on(["GET", "POST"], "/api/auth/*", (c) => opts.auth(true).handler(c.req.raw));
+
+  // Everything registered below this point needs a session
+  app.use("/api/*", async (c, next) => {
+    if (!(await opts.auth(false).api.getSession({ headers: c.req.raw.headers }))) return c.json({ error: "unauthorized" }, 401);
+    await next();
+  });
 
   app.onError((e, c) => {
     if (e instanceof InvalidInput) return c.json({ error: e.message }, 400);

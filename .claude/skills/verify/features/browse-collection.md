@@ -13,4 +13,4 @@ Add two or more Books with `drive-add-by-isbn.mjs` (different ISBNs), then `getB
 
 ## Gotchas
 - Needs several Books; the empty state shows "No Books match".
-- Seed Books through the real Add flow or `POST /api/books` (acceptable here since Add is not under test).
+- Seed Books through the real Add flow or `POST /api/books` (acceptable here since Add is not under test). The API needs the session: call `signInAs` from `scripts/sign-in.mjs` first, then use `page.request.post`.

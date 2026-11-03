@@ -20,7 +20,7 @@ Requires Node 22.18 or later and Docker (for Postgres).
 ```sh
 npm install
 cp .dev.vars.example .dev.vars
-docker compose up -d db     # Postgres 18, matching Neon's default
+docker compose up -d db oidc   # Postgres 18 (Neon's default) and a mock OIDC Provider
 npm run db:migrate
 npm run dev                  # Vite serves the app and runs the Worker in workerd
 npm run build                # Worker plus assets in dist/
@@ -28,7 +28,17 @@ npm test
 npm run typecheck
 ```
 
-Configuration lives in `.dev.vars` (see `.dev.vars.example`): `DATABASE_DRIVER` (`pg` or `neon`) and `DATABASE_URL` are required; `BOOKCASE_CONTACT_EMAIL` is optional. `BOOKCASE_TLS_CERT` and `BOOKCASE_TLS_KEY` are read by the dev server only. Schema changes: edit `src/server/schema.ts`, run `npm run db:generate`, then `npm run db:migrate`. Tests use a separate `bookcase_test` database on the same server and need `docker compose up -d db`.
+Configuration lives in `.dev.vars` (see `.dev.vars.example`); every key except `BOOKCASE_CONTACT_EMAIL` is required, and the Worker names all missing ones at once. `BOOKCASE_TLS_CERT` and `BOOKCASE_TLS_KEY` are read by the dev server only. Schema changes: edit `src/server/schema.ts`, run `npm run db:generate`, then `npm run db:migrate`. Tests use a separate `bookcase_test` database on the same server and need `docker compose up -d db`; they sign in through an in-process fake OIDC Provider, so they do not need the `oidc` service.
+
+### Signing in
+
+Bookcase has one Owner. Sign-in goes through an OIDC Provider (Google later) via Better Auth, and only an email that the Provider reports as verified and that is listed in `OWNER_EMAILS` is admitted. Every `/api` route except `/api/health` and `/api/auth/*` needs a session.
+
+- `OWNER_EMAILS`: comma-separated allowlist, case-insensitive.
+- `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`: the Provider. Its discovery document is read from `${OIDC_ISSUER}/.well-known/openid-configuration`. The browser and the Worker both use this URL, so it must be reachable from both.
+- `BETTER_AUTH_URL`: the origin the browser opens the app at; `BETTER_AUTH_SECRET`: a random secret.
+
+With the mock Provider (`docker compose up -d oidc`, port 8080, any client id and secret), the issuer is `http://<host>:8080/default`, where `<host>` is the one you browse the app on. On a phone use the LAN address for both `BETTER_AUTH_URL` and `OIDC_ISSUER`. The sign-in form asks for a username and a claims JSON. Enter `{"email": "you@example.com", "email_verified": true}` to sign in as the Owner, or drop `email_verified` (or use another email) to see the rejection.
 
 ### HTTPS for phone camera scanning
 
@@ -59,6 +69,12 @@ Production secrets live in Cloudflare, not in the repo. Set them with Wrangler (
 ```sh
 npx wrangler secret put DATABASE_URL      # Neon connection string
 npx wrangler secret put DATABASE_DRIVER   # neon
+npx wrangler secret put BETTER_AUTH_SECRET
+npx wrangler secret put BETTER_AUTH_URL   # the deployed origin
+npx wrangler secret put OWNER_EMAILS
+npx wrangler secret put OIDC_ISSUER
+npx wrangler secret put OIDC_CLIENT_ID
+npx wrangler secret put OIDC_CLIENT_SECRET
 npx wrangler secret put BOOKCASE_CONTACT_EMAIL   # optional
 ```
 

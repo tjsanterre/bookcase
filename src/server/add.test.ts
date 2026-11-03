@@ -1,5 +1,5 @@
 import { beforeEach, expect, test, vi } from "vitest";
-import { createApp } from "./app.ts";
+import { createTestApp, type SignedInApp } from "./test/app.ts";
 import { count } from "drizzle-orm";
 import { book } from "./schema.ts";
 import { db, resetDb } from "./test/db.ts";
@@ -9,8 +9,9 @@ const details = { isbn: "9780306406157", title: "Dune", subtitle: null, authors:
 const hit: Lookup = { details, cover: { contentType: "image/jpeg", data: Buffer.from([1, 2, 3]) } };
 
 const lookup = vi.fn<(isbn: string) => Promise<Lookup | undefined>>();
+let app: SignedInApp;
 const add = (isbn: unknown) =>
-  createApp({ db, lookup }).request("/api/add", {
+  app.request("/api/add", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ isbn }),
@@ -19,6 +20,7 @@ const add = (isbn: unknown) =>
 beforeEach(async () => {
   await resetDb();
   lookup.mockReset();
+  app = await createTestApp({ lookup }).signedIn();
 });
 
 test("POST /api/add on a hit saves the Book and its cover with one lookup", async () => {
@@ -27,7 +29,7 @@ test("POST /api/add on a hit saves the Book and its cover with one lookup", asyn
   expect(res.status).toBe(201);
   expect(await res.json()).toMatchObject({ status: "saved", book: { isbn: "9780306406157", title: "Dune", hasCover: true } });
   expect(lookup).toHaveBeenCalledExactlyOnceWith("9780306406157");
-  const cover = await createApp({ db, lookup }).request("/api/books/9780306406157/cover");
+  const cover = await app.request("/api/books/9780306406157/cover");
   expect(cover.headers.get("content-type")).toBe("image/jpeg");
 });
 

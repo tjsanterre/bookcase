@@ -4,6 +4,7 @@ Each file: what the feature is, how a user reaches it, how to drive it, and the 
 
 | Feature | File | Needs |
 | --- | --- | --- |
+| Sign in, sign out, API requires a session | [sign-in.md](sign-in.md) | `oidc` service (launch.sh starts it) |
 | Add a Book by ISBN | [add-book.md](add-book.md) | Open Library reachable |
 | Browse, search, sort, filter | [browse-collection.md](browse-collection.md) | at least 2 Books |
 | Book detail: edit, tag, delete | [book-detail.md](book-detail.md) | 1 Book |
