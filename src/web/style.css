@@ -44,3 +44,5 @@ button:hover { border-color: var(--accent); }
 .page { max-width: 60rem; margin: 0 auto; }
 
 .sheet { z-index: 20; background: var(--surface); border-top: 1px solid var(--border); }
+.header-actions { display: flex; align-items: center; gap: 0.5rem; }
+.signout-button { padding: 0.35rem 0.8rem; background: transparent; color: inherit; border: 1px solid currentColor; border-radius: 999px; font-weight: 600; }
