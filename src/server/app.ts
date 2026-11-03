@@ -1,4 +1,3 @@
-import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import type { Db } from "./db.ts";
 import { createBookStore, DuplicateIsbn, InvalidInput, parseBookDetails, parseTags } from "./books.ts";
@@ -8,7 +7,6 @@ import { normalizeTag } from "./tags.ts";
 
 export function createApp(opts: {
   db: Db;
-  webRoot?: string;
   lookup?: (isbn: string) => Promise<Lookup | undefined>;
 }) {
   const lookup = opts.lookup ?? createOpenLibrary(fetch, "Bookcase");
@@ -95,12 +93,5 @@ export function createApp(opts: {
 
   app.get("/api/tags", async (c) => c.json(await store.listTags()));
 
-  if (opts.webRoot) {
-    const root = opts.webRoot;
-    // Unknown /api paths must 404, not fall through to the SPA shell below
-    app.all("/api/*", (c) => c.notFound());
-    app.use("*", serveStatic({ root }));
-    app.use("*", serveStatic({ root, path: "index.html" }));
-  }
   return app;
 }
