@@ -13,10 +13,10 @@ Surface: a mobile-first web app. Vue SPA (hash routes `#/`, `#/add`, `#/books/:i
 .claude/skills/verify/scripts/launch.sh
 ```
 
-Starts Postgres (`docker compose up -d db`), drops and recreates database `bookcase_verify`, migrates it, and starts Vite on `127.0.0.1:5199` over plain http. Ready means `GET /api/books` returns 200 against the empty database; the script prints `ready:` and exits non-zero otherwise (log: `/tmp/bookcase-verify/dev.log`).
+Starts Postgres and the mock OIDC Provider (`docker compose up -d db oidc`, issuer `http://127.0.0.1:8080/default`), drops and recreates database `bookcase_verify`, migrates it, and starts Vite on `127.0.0.1:5199` over plain http. Ready means `GET /api/books` returns 401 without a cookie (the Worker loaded its config and enforces auth); the script prints `ready:` and exits non-zero otherwise (log: `/tmp/bookcase-verify/dev.log`). The Owner for this instance is `$VERIFY_OWNER_EMAIL` (`owner@verify.test`).
 
 Isolation, because the user's own dev server (`:5173`, database `bookcase`) may be running:
-- The Worker reads `.dev.vars` ahead of process env, so `DATABASE_URL=...` on the command line is silently ignored and writes hit the dev database. `launch.sh` writes `.dev.vars.verify` and sets `CLOUDFLARE_ENV=verify`, which selects it instead. Wrangler warns that no `verify` environment exists in `wrangler.jsonc`; ignore it.
+- The Worker reads `.dev.vars` ahead of process env, so `DATABASE_URL=...` on the command line is silently ignored and writes hit the dev database. `launch.sh` writes `.dev.vars.verify` (database plus the auth and OIDC settings) and sets `CLOUDFLARE_ENV=verify`, which selects it instead. Wrangler warns that no `verify` environment exists in `wrangler.jsonc`; ignore it.
 - Never drive `:5173` or the `bookcase` database. Add/Undo/Delete there change the user's real collection.
 - Refuses to start if port 5199 is taken or a previous run's pid file is live; run `cleanup.sh` first.
 
@@ -40,6 +40,8 @@ source .claude/skills/verify/scripts/env.sh   # exports VERIFY_URL and EVIDENCE_
 source .claude/skills/verify/scripts/chromium-libs.sh   # no-op unless Chromium is missing system libs and root is unavailable
 node .claude/skills/verify/scripts/drive-add-by-isbn.mjs
 ```
+
+Every `/api` route needs a session, so drive scripts sign in first with `signInAs` from `scripts/sign-in.mjs` (the real browser flow through the mock Provider) and call the API with `page.request`, which carries the cookie. A bare `fetch` gets 401. `drive-sign-in.mjs` proves the auth behavior itself.
 
 Import Playwright in new scripts via `createRequire(`${process.env.PW_DIR}/`)("playwright")` as that script does. Use a phone-sized viewport (420x800); the UI is built for phones. Stable handles:
 
