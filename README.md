@@ -11,7 +11,7 @@ A web app for keeping track of your personal book collection.
 
 ## Stack
 
-TypeScript across the whole stack, running on Cloudflare Workers: a Vue single-page app served as static assets by a Hono Worker, with Postgres (via Drizzle) for storage.
+TypeScript across the whole stack, running on Cloudflare Workers: a Vue single-page app served as static assets by a Hono Worker, with Postgres (via Drizzle) for storage (Neon in production, a Docker container locally) and Better Auth for sign-in.
 
 ## Getting started
 
@@ -28,7 +28,7 @@ npm test
 npm run typecheck
 ```
 
-Configuration lives in `.dev.vars` (see `.dev.vars.example`); every key except `BOOKCASE_CONTACT_EMAIL` is required, and the Worker names all missing ones at once. `BOOKCASE_TLS_CERT` and `BOOKCASE_TLS_KEY` are read by the dev server only. Schema changes: edit `src/server/schema.ts`, run `npm run db:generate`, then `npm run db:migrate`. Tests use a separate `bookcase_test` database on the same server and need `docker compose up -d db`; they sign in through an in-process fake OIDC Provider, so they do not need the `oidc` service.
+Configuration lives in `.dev.vars` (see `.dev.vars.example`); every key except `BOOKCASE_CONTACT_EMAIL` is required, and the Worker names all missing ones at once. `DATABASE_URL` is the Postgres connection string and `DATABASE_DRIVER` picks the client: `pg` for the local Docker database, `neon` for Neon on Workers. `BOOKCASE_CONTACT_EMAIL` is sent in the User-Agent of Open Library lookups. Sign-in keys are under Signing in. `BOOKCASE_TLS_CERT` and `BOOKCASE_TLS_KEY` are read by the dev server only. Schema changes: edit `src/server/schema.ts`, run `npm run db:generate`, then `npm run db:migrate`. Tests use a separate `bookcase_test` database on the same server and need `docker compose up -d db`; they sign in through an in-process fake OIDC Provider, so they do not need the `oidc` service.
 
 ### Signing in
 
