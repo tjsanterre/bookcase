@@ -6,12 +6,15 @@ BETTER_AUTH_SECRET=change-me-dev-secret-at-least-32-characters
 BETTER_AUTH_URL=http://localhost:5173
 # Comma-separated; only these emails, verified by the Provider, may sign in (case-insensitive)
 OWNER_EMAILS=you@example.com
-# The OIDC Provider. The browser and the Worker must both reach this exact URL, so for the
+# The mock OIDC Provider (optional if Google is set). The browser and the Worker must both reach this exact URL, so for the
 # mock server from `docker compose up -d oidc` use the same host you browse the app on
-# (localhost, or the LAN address for a phone). Real Google: https://accounts.google.com
+# (localhost, or the LAN address for a phone).
 OIDC_ISSUER=http://localhost:8080/default
 OIDC_CLIENT_ID=bookcase
 OIDC_CLIENT_SECRET=bookcase-dev-secret
+# Real Google sign-in from localhost (see README); set both or neither. Either Provider alone is enough.
+# GOOGLE_CLIENT_ID=
+# GOOGLE_CLIENT_SECRET=
 # Sent in the User-Agent of Open Library requests
 # BOOKCASE_CONTACT_EMAIL=you@example.com
 # Set both to serve the dev server over HTTPS (needed for phone camera access); see README

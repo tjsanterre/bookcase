@@ -32,13 +32,26 @@ Configuration lives in `.dev.vars` (see `.dev.vars.example`); every key except `
 
 ### Signing in
 
-Bookcase has one Owner. Sign-in goes through an OIDC Provider (Google later) via Better Auth, and only an email that the Provider reports as verified and that is listed in `OWNER_EMAILS` is admitted. Every `/api` route except `/api/health` and `/api/auth/*` needs a session.
+Bookcase has one Owner. Sign-in goes through Better Auth with Google or a mock OIDC Provider, and only an email that the Provider reports as verified and that is listed in `OWNER_EMAILS` is admitted. Every `/api` route except `/api/health` and `/api/auth/*` needs a session.
 
 - `OWNER_EMAILS`: comma-separated allowlist, case-insensitive.
-- `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`: the Provider. Its discovery document is read from `${OIDC_ISSUER}/.well-known/openid-configuration`. The browser and the Worker both use this URL, so it must be reachable from both.
+- `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`: Google. Set both or neither.
+- `OIDC_ISSUER`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`: the mock Provider. Its discovery document is read from `${OIDC_ISSUER}/.well-known/openid-configuration`. The browser and the Worker both use this URL, so it must be reachable from both. Set all three or none.
+- At least one Provider must be configured; the sign-in page offers each one that is. Supporting another Provider is one entry in `PROVIDERS` in `src/server/config.ts`.
 - `BETTER_AUTH_URL`: the origin the browser opens the app at; `BETTER_AUTH_SECRET`: a random secret.
 
 With the mock Provider (`docker compose up -d oidc`, port 8080, any client id and secret), the issuer is `http://<host>:8080/default`, where `<host>` is the one you browse the app on. On a phone use the LAN address for both `BETTER_AUTH_URL` and `OIDC_ISSUER`. The sign-in form asks for a username and a claims JSON. Enter `{"email": "you@example.com", "email_verified": true}` to sign in as the Owner, or drop `email_verified` (or use another email) to see the rejection.
+
+#### Verifying Google by hand
+
+Google rejects LAN-IP redirect URIs and cannot run in CI, so test it from `localhost` with a real Google account. Phone testing uses the mock Provider instead.
+
+1. In the [Google Cloud console](https://console.cloud.google.com/apis/credentials), configure the OAuth consent screen (External, Testing, with your Google account as a test user), then create an **OAuth client ID** of type **Web application**.
+2. Add the authorized redirect URI `http://localhost:5173/api/auth/oauth2/callback/google`. For a deployment add `https://<deployed origin>/api/auth/oauth2/callback/google` too.
+3. Put the client ID and secret in `.dev.vars` as `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, set `BETTER_AUTH_URL=http://localhost:5173`, and set `OWNER_EMAILS` to your Google address. Restart `npm run dev`.
+4. Open `http://localhost:5173`. Expect the sign-in page with **Continue with Google**. Sign in with the Owner address and expect the covers grid.
+5. Sign out, then sign in with a Google account whose email is not in `OWNER_EMAILS`. Expect to land back on the sign-in page with "That account isn't allowed" and no session: `/api/books` answers 401.
+6. Optionally remove your address from `OWNER_EMAILS`, restart, and confirm the Owner is locked out too.
 
 ### HTTPS for phone camera scanning
 
@@ -72,9 +85,8 @@ npx wrangler secret put DATABASE_DRIVER   # neon
 npx wrangler secret put BETTER_AUTH_SECRET
 npx wrangler secret put BETTER_AUTH_URL   # the deployed origin
 npx wrangler secret put OWNER_EMAILS
-npx wrangler secret put OIDC_ISSUER
-npx wrangler secret put OIDC_CLIENT_ID
-npx wrangler secret put OIDC_CLIENT_SECRET
+npx wrangler secret put GOOGLE_CLIENT_ID
+npx wrangler secret put GOOGLE_CLIENT_SECRET
 npx wrangler secret put BOOKCASE_CONTACT_EMAIL   # optional
 ```
 

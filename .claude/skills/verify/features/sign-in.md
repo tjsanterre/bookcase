@@ -1,7 +1,7 @@
 # Sign in, sign out, API requires a session
 
 ## Sub-features
-- Signed-out visit to any hash route lands on `#/sign-in`, which has a `Continue with your account` button
+- Signed-out visit to any hash route lands on `#/sign-in`, which has a `Continue with Mock Provider` button
 - Owner admitted: a verified email on `OWNER_EMAILS` through the mock OIDC Provider's login form
 - Refused: an email off the allowlist, or an allowlisted email without `email_verified`, returns to `#/sign-in` with an alert and no session
 - `Sign out` in the header ends the session

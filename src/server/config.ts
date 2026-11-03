@@ -9,9 +9,24 @@ export interface Config {
     /** Lowercased emails of the Owner(s) admitted at sign-in. */
     ownerEmails: string[];
   };
-  /** The OIDC Provider. Its discovery document lives at `${issuer}/.well-known/openid-configuration`. */
-  oidc: { issuer: string; clientId: string; clientSecret: string };
+  /** The configured Providers, at least one. Each discovery document lives at `${issuer}/.well-known/openid-configuration`. */
+  providers: ProviderConfig[];
 }
+
+export interface ProviderConfig {
+  /** The id the SPA names when signing in with it. */
+  id: string;
+  label: string;
+  issuer: string;
+  clientId: string;
+  clientSecret: string;
+}
+
+// One entry per supported Provider; it is enabled once its keys are set. Without `issuer`, `issuerKey` names the env key holding it.
+const PROVIDERS = [
+  { id: "google", label: "Google", issuer: "https://accounts.google.com", clientIdKey: "GOOGLE_CLIENT_ID", clientSecretKey: "GOOGLE_CLIENT_SECRET" },
+  { id: "oidc", label: "Mock Provider", issuerKey: "OIDC_ISSUER", clientIdKey: "OIDC_CLIENT_ID", clientSecretKey: "OIDC_CLIENT_SECRET" },
+];
 
 /** Reads the environment into a Config, throwing one error that lists every missing or invalid key. */
 export function loadConfig(env: Record<string, string | undefined>): Config {
@@ -32,15 +47,27 @@ export function loadConfig(env: Record<string, string | undefined>): Config {
     .map((e) => e.trim().toLowerCase())
     .filter(Boolean);
   if (env.OWNER_EMAILS?.trim() && !ownerEmails.length) problems.push("OWNER_EMAILS must list at least one email");
-  const issuer = required("OIDC_ISSUER").replace(/\/+$/, "");
-  const clientId = required("OIDC_CLIENT_ID");
-  const clientSecret = required("OIDC_CLIENT_SECRET");
+
+  const providers: ProviderConfig[] = [];
+  for (const { id, label, ...p } of PROVIDERS) {
+    const keys = [p.issuerKey, p.clientIdKey, p.clientSecretKey].filter((k): k is string => !!k);
+    const [set, missing] = [keys.filter((k) => env[k]?.trim()), keys.filter((k) => !env[k]?.trim())];
+    if (!set.length) continue;
+    if (missing.length) problems.push(`${missing.join(", ")} required when ${set[0]} is set`);
+    else {
+      const issuer = p.issuerKey ? env[p.issuerKey]!.trim() : p.issuer!;
+      providers.push({ id, label, issuer: issuer.replace(/\/+$/, ""), clientId: env[p.clientIdKey]!.trim(), clientSecret: env[p.clientSecretKey]!.trim() });
+    }
+  }
+  if (!providers.length && !problems.some((x) => x.includes("required when"))) {
+    problems.push("no Provider configured: set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET (or the OIDC_* mock keys)");
+  }
   if (problems.length) throw new Error(`Invalid configuration (see .dev.vars.example): ${problems.join("; ")}`);
 
   return {
     database: { url, driver: driver as "pg" | "neon" },
     contactEmail: env.BOOKCASE_CONTACT_EMAIL,
     auth: { secret, baseURL, ownerEmails },
-    oidc: { issuer, clientId, clientSecret },
+    providers,
   };
 }

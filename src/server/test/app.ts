@@ -1,5 +1,5 @@
 import { createApp } from "../app.ts";
-import { createAuth, PROVIDER_ID } from "../auth.ts";
+import { createAuth } from "../auth.ts";
 import { loadConfig } from "../config.ts";
 import type { Lookup } from "../openLibrary.ts";
 import { db } from "./db.ts";
@@ -17,7 +17,7 @@ const cookieHeader = (res: Response) => res.headers.getSetCookie().map((c) => c.
 /** The real app wired to the real database and the fake OIDC Provider; no session until `signIn` succeeds. */
 export function createTestApp(opts: { lookup?: (isbn: string) => Promise<Lookup | undefined> } = {}) {
   const config = loadConfig({ ...validEnv, OWNER_EMAILS: ` ${OWNER_EMAIL.toUpperCase()} `, OIDC_ISSUER: oidc.issuer });
-  const app = createApp({ db, auth: (withProvider) => createAuth(db, config, withProvider), lookup: opts.lookup });
+  const app = createApp({ db, providers: config.providers, auth: (withProvider) => createAuth(db, config, withProvider), lookup: opts.lookup });
   const base = config.auth.baseURL;
 
   /** Runs the browser's OAuth round trip as the Provider's `profile`; returns the session cookie, or undefined when rejected. */
@@ -26,7 +26,7 @@ export function createTestApp(opts: { lookup?: (isbn: string) => Promise<Lookup 
     const start = await app.request(`${base}/api/auth/sign-in/social`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Origin: base },
-      body: JSON.stringify({ provider: PROVIDER_ID, callbackURL: "/" }),
+      body: JSON.stringify({ provider: "oidc", callbackURL: "/" }),
     });
     const authorize = await fetch(((await start.json()) as { url: string }).url, { redirect: "manual" });
     const callback = await app.request(authorize.headers.get("Location")!, { headers: { Cookie: cookieHeader(start) } });
