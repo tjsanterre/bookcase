@@ -90,7 +90,7 @@ npx wrangler secret put GOOGLE_CLIENT_SECRET
 npx wrangler secret put BOOKCASE_CONTACT_EMAIL   # optional
 ```
 
-`npm run build && npm run deploy` publishes the Worker; `npm run deploy -- --dry-run` checks the bundle without publishing.
+`npm run build && npm run deploy` publishes the Worker; `npm run deploy -- --dry-run` checks the bundle without publishing; CI runs it on every push. There is no deploy job yet. When one is added it must run `npm run db:migrate` against Neon (with `DATABASE_URL` set to the Neon connection string) before `wrangler deploy`.
 
 ## License
 
