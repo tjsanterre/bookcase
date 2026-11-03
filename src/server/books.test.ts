@@ -1,15 +1,15 @@
 import { beforeEach, describe, expect, test } from "vitest";
-import { createApp } from "./app.ts";
+import { createTestApp, type SignedInApp } from "./test/app.ts";
 import { createBookStore } from "./books.ts";
 import { db, resetDb } from "./test/db.ts";
 import { book, cover, tag } from "./schema.ts";
 import { count, eq } from "drizzle-orm";
 
-let app: ReturnType<typeof createApp>;
+let app: SignedInApp;
 
 beforeEach(async () => {
   await resetDb();
-  app = createApp({ db });
+  app = await createTestApp().signedIn();
 });
 
 const send = (method: string, path: string, body?: unknown) =>
