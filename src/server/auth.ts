@@ -28,6 +28,8 @@ export function createAuth(db: Db, { auth, oidc }: Pick<Config, "auth" | "oidc">
                 clientId: oidc.clientId,
                 clientSecret: oidc.clientSecret,
                 scopes: ["openid", "email", "profile"],
+                // Sign-out ends only the Bookcase session; the default would navigate the browser to the Provider's logout page
+                disableProviderLogout: true,
               },
             ]
           : [],
