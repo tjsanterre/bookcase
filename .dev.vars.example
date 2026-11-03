@@ -1,5 +1,17 @@
 DATABASE_DRIVER=pg
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/bookcase
+# Better Auth: `openssl rand -base64 32`; BETTER_AUTH_URL is the origin the browser opens the app at
+# (use the LAN address, e.g. https://192.168.1.20:5173, when testing from a phone)
+BETTER_AUTH_SECRET=change-me-dev-secret-at-least-32-characters
+BETTER_AUTH_URL=http://localhost:5173
+# Comma-separated; only these emails, verified by the Provider, may sign in (case-insensitive)
+OWNER_EMAILS=you@example.com
+# The OIDC Provider. The browser and the Worker must both reach this exact URL, so for the
+# mock server from `docker compose up -d oidc` use the same host you browse the app on
+# (localhost, or the LAN address for a phone). Real Google: https://accounts.google.com
+OIDC_ISSUER=http://localhost:8080/default
+OIDC_CLIENT_ID=bookcase
+OIDC_CLIENT_SECRET=bookcase-dev-secret
 # Sent in the User-Agent of Open Library requests
 # BOOKCASE_CONTACT_EMAIL=you@example.com
 # Set both to serve the dev server over HTTPS (needed for phone camera access); see README
