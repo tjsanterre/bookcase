@@ -1,25 +1,17 @@
-import { mkdirSync, readdirSync, readFileSync } from "node:fs";
-import { dirname } from "node:path";
-import Database from "better-sqlite3";
+import { neonConfig, Pool as NeonPool } from "@neondatabase/serverless";
+import { drizzle as drizzleNeon } from "drizzle-orm/neon-serverless";
+import { drizzle as drizzlePg } from "drizzle-orm/node-postgres";
+import type { PgDatabase, PgQueryResultHKT } from "drizzle-orm/pg-core";
+import pg from "pg";
+import ws from "ws";
+import type { Config } from "./config.ts";
+import * as schema from "./schema.ts";
 
-const migrationsDir = `${import.meta.dirname}/migrations`;
+export type Db = PgDatabase<PgQueryResultHKT, typeof schema>;
 
-/** Opens the database (":memory:" for tests) and applies any migrations newer than its user_version. */
-export function openDb(path: string): Database.Database {
-  if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
-  const db = new Database(path);
-  db.pragma("foreign_keys = ON");
-
-  // Migration files are named NNN_name.sql; NNN is the user_version they bring the database to
-  const files = readdirSync(migrationsDir).filter((f) => f.endsWith(".sql")).sort();
-  const current = db.pragma("user_version", { simple: true }) as number;
-  for (const file of files) {
-    const version = Number.parseInt(file, 10);
-    if (version <= current) continue;
-    db.transaction(() => {
-      db.exec(readFileSync(`${migrationsDir}/${file}`, "utf8"));
-      db.pragma(`user_version = ${version}`);
-    })();
-  }
-  return db;
+/** Connects Drizzle with the driver named by the config; both support interactive transactions. */
+export function openDb({ url, driver }: Config["database"]): Db {
+  if (driver === "pg") return drizzlePg({ client: new pg.Pool({ connectionString: url }), schema, casing: "snake_case" });
+  neonConfig.webSocketConstructor = ws; // Node has no global WebSocket for the Neon driver to use
+  return drizzleNeon({ client: new NeonPool({ connectionString: url }), schema, casing: "snake_case" });
 }
