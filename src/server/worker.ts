@@ -11,6 +11,7 @@ export default {
     const db = openDb(config.database);
     const app = createApp({
       db,
+      providers: config.providers,
       auth: (withProvider) => createAuth(db, config, withProvider),
       lookup: createOpenLibrary(fetch, config.contactEmail ? `Bookcase (${config.contactEmail})` : "Bookcase"),
     });

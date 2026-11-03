@@ -10,12 +10,15 @@ export function createApp(opts: {
   db: Db;
   /** Builds Better Auth; `withProvider` is true only for the sign-in routes. */
   auth: (withProvider: boolean) => Auth;
+  /** The configured Providers; only `id` and `label` are exposed to the sign-in page. */
+  providers: { id: string; label: string }[];
   lookup?: (isbn: string) => Promise<Lookup | undefined>;
 }) {
   const lookup = opts.lookup ?? createOpenLibrary(fetch, "Bookcase");
   const store = createBookStore(opts.db);
   const app = new Hono();
   app.get("/api/health", (c) => c.json({ ok: true }));
+  app.get("/api/auth/providers", (c) => c.json(opts.providers.map(({ id, label }) => ({ id, label }))));
   app.on(["GET", "POST"], "/api/auth/*", (c) => opts.auth(true).handler(c.req.raw));
 
   // Everything registered below this point needs a session

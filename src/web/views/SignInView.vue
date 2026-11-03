@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { useRoute } from "vue-router";
-import { signInWithProvider } from "../auth";
+import { fetchProviders, signInWithProvider, type ProviderChoice } from "../auth";
 
 const route = useRoute();
 // The Worker appends ?error= ahead of the hash when it refuses a sign-in
 const refused = computed(() => new URLSearchParams(location.search).has("error"));
+const providers = ref<ProviderChoice[]>([]);
+fetchProviders().then((list) => (providers.value = list));
 const back = computed(() => (typeof route.query.redirect === "string" ? route.query.redirect : "/"));
 </script>
 
@@ -14,7 +16,9 @@ const back = computed(() => (typeof route.query.redirect === "string" ? route.qu
     <h1>Sign in</h1>
     <p class="hint">Bookcase is private. Sign in with the Owner's account.</p>
     <p v-if="refused" role="alert" class="refused">That account isn't allowed. Use the Owner's verified email.</p>
-    <button type="button" class="provider-button" @click="signInWithProvider(back)">Continue with your account</button>
+    <button v-for="p in providers" :key="p.id" type="button" class="provider-button" @click="signInWithProvider(p.id, back)">
+      Continue with {{ p.label }}
+    </button>
   </main>
 </template>
 

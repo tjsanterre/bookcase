@@ -10,6 +10,12 @@ test("GET /api/health responds ok without a session", async () => {
   expect(await res.json()).toEqual({ ok: true });
 });
 
+test("GET /api/auth/providers lists the configured Providers without a session", async () => {
+  const res = await createTestApp().app.request("/api/auth/providers");
+  expect(res.status).toBe(200);
+  expect(await res.json()).toEqual([{ id: "oidc", label: "Mock Provider" }]);
+});
+
 test("unknown /api routes 404 instead of falling back to the SPA", async () => {
   const owner = await createTestApp().signedIn();
   expect((await owner.request("/api/nope")).status).toBe(404);

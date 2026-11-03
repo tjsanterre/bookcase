@@ -6,14 +6,11 @@ import type { Db } from "./db.ts";
 import { isOwner } from "./owner.ts";
 import * as schema from "./schema.ts";
 
-/** The id the SPA names when signing in with the configured OIDC Provider. */
-export const PROVIDER_ID = "oidc";
-
 /**
  * Better Auth backed by the app's database; build one per request alongside the Db it shares.
  * Registering the Provider fetches its discovery document, so only the sign-in routes ask for it.
  */
-export function createAuth(db: Db, { auth, oidc }: Pick<Config, "auth" | "oidc">, withProvider: boolean) {
+export function createAuth(db: Db, { auth, providers }: Pick<Config, "auth" | "providers">, withProvider: boolean) {
   return betterAuth({
     baseURL: auth.baseURL,
     secret: auth.secret,
@@ -21,17 +18,15 @@ export function createAuth(db: Db, { auth, oidc }: Pick<Config, "auth" | "oidc">
     plugins: [
       genericOAuth({
         config: withProvider
-          ? [
-              {
-                providerId: PROVIDER_ID,
-                discoveryUrl: `${oidc.issuer}/.well-known/openid-configuration`,
-                clientId: oidc.clientId,
-                clientSecret: oidc.clientSecret,
-                scopes: ["openid", "email", "profile"],
-                // Sign-out ends only the Bookcase session; the default would navigate the browser to the Provider's logout page
-                disableProviderLogout: true,
-              },
-            ]
+          ? providers.map(({ id, issuer, clientId, clientSecret }) => ({
+              providerId: id,
+              discoveryUrl: `${issuer}/.well-known/openid-configuration`,
+              clientId,
+              clientSecret,
+              scopes: ["openid", "email", "profile"],
+              // Sign-out ends only the Bookcase session; the default would navigate the browser to the Provider's logout page
+              disableProviderLogout: true,
+            }))
           : [],
       }),
     ],
