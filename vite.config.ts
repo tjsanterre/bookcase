@@ -1,18 +1,18 @@
 import { readFileSync } from "node:fs";
+import { cloudflare } from "@cloudflare/vite-plugin";
 import vue from "@vitejs/plugin-vue";
 import { defineConfig } from "vitest/config";
 
-const { BOOKCASE_PORT = "3000", BOOKCASE_TLS_CERT: cert, BOOKCASE_TLS_KEY: key } = process.env;
-const port = Number(BOOKCASE_PORT);
-const tls = cert && key ? { cert, key } : undefined;
+const { BOOKCASE_TLS_CERT: cert, BOOKCASE_TLS_KEY: key } = process.env;
 
 export default defineConfig({
   root: "src/web",
-  plugins: [vue()],
-  build: { outDir: "../../dist/web", emptyOutDir: true },
+  // The Workers runtime plugin cannot run under Vitest, which tests the app in Node.
+  build: { outDir: "../../dist", emptyOutDir: true },
+  plugins: [vue(), !process.env.VITEST && cloudflare({ configPath: "../../wrangler.jsonc" })],
   test: { globalSetup: ["src/server/test/globalSetup.ts"], fileParallelism: false }, // test files share one database
   server: {
-    https: tls && { cert: readFileSync(tls.cert), key: readFileSync(tls.key) },
-    proxy: { "/api": { target: `${tls ? "https" : "http"}://127.0.0.1:${port}`, secure: false } },
+    https: cert && key ? { cert: readFileSync(cert), key: readFileSync(key) } : undefined,
+    host: true, // reachable from a phone on the LAN
   },
 });

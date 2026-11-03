@@ -1,9 +1,7 @@
 DATABASE_DRIVER=pg
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/bookcase
-BOOKCASE_HOST=0.0.0.0
-BOOKCASE_PORT=3000
 # Sent in the User-Agent of Open Library requests
 # BOOKCASE_CONTACT_EMAIL=you@example.com
-# Set both to serve HTTPS (needed for phone camera access); see README
+# Set both to serve the dev server over HTTPS (needed for phone camera access); see README
 # BOOKCASE_TLS_CERT=./certs/bookcase.pem
 # BOOKCASE_TLS_KEY=./certs/bookcase-key.pem
