@@ -23,3 +23,11 @@ _Avoid_: Scan (a barcode read is only one way to supply the ISBN), import, looku
 **ISBN**:
 The identifier an Add supplies; the lookup key for a Book's details.
 _Avoid_: Barcode (the barcode is only how an ISBN is read)
+
+**Owner**:
+The one person allowed to sign in and use the Bookcase. Identified by a verified email on an allowlist, not by the sign-in Provider.
+_Avoid_: User, admin, account
+
+**Provider**:
+An external identity service (Google first) that vouches for who is signing in.
+_Avoid_: Login method, SSO

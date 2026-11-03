@@ -11,22 +11,24 @@ A web app for keeping track of your personal book collection.
 
 ## Stack
 
-TypeScript across the whole stack, running on Node.js: a Vue single-page app served by a Hono backend, with SQLite for storage.
+TypeScript across the whole stack, running on Node.js: a Vue single-page app served by a Hono backend, with Postgres (via Drizzle) for storage.
 
 ## Getting started
 
-Requires Node 22.18 or later.
+Requires Node 22.18 or later and Docker (for Postgres).
 
 ```sh
 npm install
-cp .env.example .env
+cp .dev.vars.example .dev.vars
+docker compose up -d db     # Postgres 18, matching Neon's default
+npm run db:migrate
 npm run build && npm start   # one process: API plus the built app
 npm run dev                  # Hono watch plus Vite dev server (Vite proxies /api)
 npm test
 npm run typecheck
 ```
 
-Configuration is environment variables (see `.env.example`): `BOOKCASE_HOST`, `BOOKCASE_PORT`, `BOOKCASE_DB`, `BOOKCASE_CONTACT_EMAIL`, `BOOKCASE_TLS_CERT`, `BOOKCASE_TLS_KEY`. State lives in `data/`.
+Configuration lives in `.dev.vars` (see `.dev.vars.example`): `DATABASE_DRIVER` (`pg` or `neon`) and `DATABASE_URL` are required; `BOOKCASE_HOST`, `BOOKCASE_PORT`, `BOOKCASE_CONTACT_EMAIL`, `BOOKCASE_TLS_CERT` and `BOOKCASE_TLS_KEY` are optional. Schema changes: edit `src/server/schema.ts`, run `npm run db:generate`, then `npm run db:migrate`. Tests use a separate `bookcase_test` database on the same server and need `docker compose up -d db`.
 
 ### HTTPS for phone camera scanning
 

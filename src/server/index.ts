@@ -8,7 +8,7 @@ import { createOpenLibrary } from "./openLibrary.ts";
 
 const config = loadConfig(process.env);
 const app = createApp({
-  db: openDb(config.db),
+  db: openDb(config.database),
   webRoot: "dist/web",
   lookup: createOpenLibrary(fetch, config.contactEmail ? `Bookcase (${config.contactEmail})` : "Bookcase"),
 });

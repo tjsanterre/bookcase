@@ -1,12 +1,13 @@
 import { beforeEach, expect, test, vi } from "vitest";
 import { createApp } from "./app.ts";
-import { openDb } from "./db.ts";
+import { count } from "drizzle-orm";
+import { book } from "./schema.ts";
+import { db, resetDb } from "./test/db.ts";
 import { LookupFailed, type Lookup } from "./openLibrary.ts";
 
 const details = { isbn: "9780306406157", title: "Dune", subtitle: null, authors: ["Frank Herbert"], publisher: "Ace", year: 1965, pageCount: 412 };
 const hit: Lookup = { details, cover: { contentType: "image/jpeg", data: Buffer.from([1, 2, 3]) } };
 
-let db: ReturnType<typeof openDb>;
 const lookup = vi.fn<(isbn: string) => Promise<Lookup | undefined>>();
 const add = (isbn: unknown) =>
   createApp({ db, lookup }).request("/api/add", {
@@ -15,8 +16,8 @@ const add = (isbn: unknown) =>
     body: JSON.stringify({ isbn }),
   });
 
-beforeEach(() => {
-  db = openDb(":memory:");
+beforeEach(async () => {
+  await resetDb();
   lookup.mockReset();
 });
 
@@ -34,7 +35,7 @@ test("POST /api/add on a miss saves nothing and asks for manual entry", async ()
   lookup.mockResolvedValue(undefined);
   const res = await add("9780306406157");
   expect(await res.json()).toEqual({ status: "manual", isbn: "9780306406157" });
-  expect(db.prepare("SELECT COUNT(*) AS n FROM book").get()).toEqual({ n: 0 });
+  expect(await db.select({ n: count() }).from(book)).toEqual([{ n: 0 }]);
 });
 
 test("POST /api/add on a duplicate returns the existing Book without a lookup", async () => {

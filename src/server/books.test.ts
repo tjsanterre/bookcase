@@ -1,13 +1,14 @@
 import { beforeEach, describe, expect, test } from "vitest";
 import { createApp } from "./app.ts";
 import { createBookStore } from "./books.ts";
-import { openDb } from "./db.ts";
+import { db, resetDb } from "./test/db.ts";
+import { book, cover, tag } from "./schema.ts";
+import { count, eq } from "drizzle-orm";
 
-let db: ReturnType<typeof openDb>;
 let app: ReturnType<typeof createApp>;
 
-beforeEach(() => {
-  db = openDb(":memory:");
+beforeEach(async () => {
+  await resetDb();
   app = createApp({ db });
 });
 
@@ -20,11 +21,6 @@ const send = (method: string, path: string, body?: unknown) =>
 
 const dune = { isbn: "9780306406157", title: "Dune", authors: ["Frank Herbert"], year: 1965 };
 
-test("openDb applies migrations once and records user_version", () => {
-  expect(db.pragma("user_version", { simple: true })).toBe(1);
-  expect(() => db.prepare("SELECT 1 FROM book, tag, book_tag, cover").all()).not.toThrow();
-});
-
 test("POST /api/books creates a Book and normalises an ISBN-10", async () => {
   const res = await send("POST", "/api/books", { ...dune, isbn: "0-306-40615-2", tags: [" SciFi "] });
   expect(res.status).toBe(201);
@@ -35,7 +31,7 @@ test("POST /api/books rejects a duplicate ISBN, even given as ISBN-10", async ()
   await send("POST", "/api/books", dune);
   const res = await send("POST", "/api/books", { ...dune, isbn: "0306406152" });
   expect(res.status).toBe(409);
-  expect(db.prepare("SELECT COUNT(*) AS n FROM book").get()).toEqual({ n: 1 });
+  expect(await db.select({ n: count() }).from(book)).toEqual([{ n: 1 }]);
 });
 
 test("POST /api/books rejects a bad check digit, missing title, and bad JSON", async () => {
@@ -77,11 +73,11 @@ test("PUT /api/books/:isbn 404s for an unknown Book", async () => {
 test("DELETE /api/books/:isbn removes the Book, its cover and its orphaned tags", async () => {
   await send("POST", "/api/books", { ...dune, tags: ["solo", "shared"] });
   await send("POST", "/api/books", { isbn: "9780804429573", title: "Other", tags: ["shared"] });
-  createBookStore(db).setCover(dune.isbn, "image/png", Buffer.from([1, 2, 3]));
+  await createBookStore(db).setCover(dune.isbn, "image/png", Buffer.from([1, 2, 3]));
 
   expect((await send("DELETE", "/api/books/9780306406157")).status).toBe(204);
   expect((await send("GET", "/api/books/9780306406157")).status).toBe(404);
-  expect(db.prepare("SELECT COUNT(*) AS n FROM cover").get()).toEqual({ n: 0 });
+  expect(await db.select({ n: count() }).from(cover)).toEqual([{ n: 0 }]);
   expect(await (await send("GET", "/api/tags")).json()).toEqual([{ name: "shared", count: 1 }]);
   expect((await send("DELETE", "/api/books/9780306406157")).status).toBe(404);
 });
@@ -96,7 +92,7 @@ test("PUT /api/books/:isbn/tags replaces tags and deletes a tag once its last Bo
     { name: "b", count: 2 },
     { name: "c", count: 1 },
   ]);
-  expect(db.prepare("SELECT COUNT(*) AS n FROM tag").get()).toEqual({ n: 2 });
+  expect(await db.select({ n: count() }).from(tag)).toEqual([{ n: 2 }]);
 });
 
 test("PUT /api/books/:isbn/tags rejects invalid tags and unknown Books", async () => {
@@ -110,7 +106,7 @@ test("GET /api/books/:isbn/cover serves the stored image and 404s without one", 
   await send("POST", "/api/books", dune);
   expect((await send("GET", "/api/books/9780306406157/cover")).status).toBe(404);
 
-  createBookStore(db).setCover(dune.isbn, "image/png", Buffer.from([1, 2, 3]));
+  await createBookStore(db).setCover(dune.isbn, "image/png", Buffer.from([1, 2, 3]));
   const res = await send("GET", "/api/books/9780306406157/cover");
   expect(res.headers.get("Content-Type")).toBe("image/png");
   expect([...new Uint8Array(await res.arrayBuffer())]).toEqual([1, 2, 3]);
@@ -120,7 +116,7 @@ test("GET /api/books/:isbn/cover serves the stored image and 404s without one", 
 test("GET /api/books flags which Books have a cover", async () => {
   await send("POST", "/api/books", dune);
   await send("POST", "/api/books", { ...dune, isbn: "9780441172719", title: "Neuromancer" });
-  createBookStore(db).setCover(dune.isbn, "image/png", Buffer.from([1]));
+  await createBookStore(db).setCover(dune.isbn, "image/png", Buffer.from([1]));
   const { books } = (await (await send("GET", "/api/books")).json()) as { books: { title: string; hasCover: boolean }[] };
   expect(books.map((b) => [b.title, b.hasCover])).toEqual([["Dune", true], ["Neuromancer", false]]);
 });
@@ -163,7 +159,7 @@ describe("GET /api/books", () => {
     expect(r.total).toBe(4);
     expect(await titles()).toEqual(["Algorithms 100%", "Dune", "Left Hand of Darkness", "The Odyssey"]);
     expect(await titles("?sort=author")).toEqual(["The Odyssey", "Algorithms 100%", "Dune", "Left Hand of Darkness"]);
-    db.prepare("UPDATE book SET added_at = ? WHERE title = 'Dune'").run("2099-01-01T00:00:00.000Z");
+    await db.update(book).set({ addedAt: new Date("2099-01-01T00:00:00.000Z") }).where(eq(book.title, "Dune"));
     expect((await titles("?sort=recent"))[0]).toBe("Dune");
   });
 

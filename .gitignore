@@ -9,12 +9,7 @@ coverage/
 # Environment
 .env
 .env.*
-!.env.example
-
-# Local database files
-*.sqlite
-*.sqlite3
-*.db
+.dev.vars
 
 # Logs
 *.log
@@ -28,6 +23,5 @@ npm-debug.log*
 # Agent worktrees
 .claude/worktrees/
 
-# App state and local certs
-data/
+# Local certs
 certs/

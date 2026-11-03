@@ -1,4 +1,6 @@
-import type Database from "better-sqlite3";
+import { and, asc, count, eq, inArray, notInArray, or, sql, type SQL } from "drizzle-orm";
+import type { Db } from "./db.ts";
+import { book, bookTag, cover, tag } from "./schema.ts";
 import { authorSortKey } from "./authorSort.ts";
 import { normalizeIsbn } from "./isbn.ts";
 import { normalizeTag } from "./tags.ts";
@@ -80,179 +82,187 @@ export interface BookQuery {
 
 const likePattern = (word: string) => `%${word.replace(/[\\%_]/g, "\\$&")}%`;
 
-interface BookRow {
-  id: number;
-  isbn: string;
-  title: string;
-  subtitle: string | null;
-  authors: string;
-  publisher: string | null;
-  year: number | null;
-  page_count: number | null;
-  added_at: string;
-  updated_at: string;
+type Executor = Pick<Db, "select" | "insert" | "update" | "delete">;
+type BookRow = typeof book.$inferSelect;
+
+// The driver may wrap the pg error, so look at the cause too
+const isUniqueViolation = (e: unknown): boolean =>
+  (e as { code?: string })?.code === "23505" || (e as { cause?: unknown })?.cause !== undefined && isUniqueViolation((e as { cause: unknown }).cause);
+
+/** Maps the UNIQUE(isbn) violation to DuplicateIsbn */
+async function guardDuplicate<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (e) {
+    if (isUniqueViolation(e)) throw new DuplicateIsbn();
+    throw e;
+  }
 }
 
-export function createBookStore(db: Database.Database) {
-  const insertBook = db.prepare(
-    `INSERT INTO book (isbn, title, subtitle, authors, publisher, year, page_count, added_at, updated_at)
-     VALUES (@isbn, @title, @subtitle, @authors, @publisher, @year, @pageCount, @now, @now)`,
-  );
-  const updateBook = db.prepare(
-    `UPDATE book SET isbn = @isbn, title = @title, subtitle = @subtitle, authors = @authors,
-       publisher = @publisher, year = @year, page_count = @pageCount, updated_at = @now
-     WHERE id = @id`,
-  );
-  const rowByIsbn = db.prepare<[string], BookRow>("SELECT * FROM book WHERE isbn = ?");
-  const tagsFor = db.prepare<[number], { name: string }>(
-    "SELECT t.name FROM tag t JOIN book_tag bt ON bt.tag_id = t.id WHERE bt.book_id = ? ORDER BY t.name",
-  );
-  const coverFor = db.prepare<[number], { one: 1 }>("SELECT 1 AS one FROM cover WHERE book_id = ?");
-  const deleteBook = db.prepare("DELETE FROM book WHERE id = ?");
-  const clearBookTags = db.prepare("DELETE FROM book_tag WHERE book_id = ?");
-  const insertTag = db.prepare("INSERT OR IGNORE INTO tag (name) VALUES (?)");
-  const linkTag = db.prepare(
-    "INSERT INTO book_tag (book_id, tag_id) SELECT ?, id FROM tag WHERE name = ?",
-  );
-  const deleteOrphanTags = db.prepare(
-    "DELETE FROM tag WHERE id NOT IN (SELECT tag_id FROM book_tag)",
-  );
-  const selectTags = db.prepare("SELECT name, COUNT(*) AS count FROM tag t JOIN book_tag bt ON bt.tag_id = t.id GROUP BY t.id ORDER BY name");
-  const upsertCover = db.prepare(
-    "INSERT OR REPLACE INTO cover (book_id, content_type, data) VALUES (?, ?, ?)",
-  );
-  const selectCover = db.prepare<[string], { content_type: string; data: Buffer }>(
-    "SELECT c.content_type, c.data FROM cover c JOIN book b ON b.id = c.book_id WHERE b.isbn = ?",
-  );
+const writeValues = (d: BookDetails) => ({
+  isbn: d.isbn,
+  title: d.title,
+  subtitle: d.subtitle,
+  authors: d.authors,
+  publisher: d.publisher,
+  year: d.year,
+  pageCount: d.pageCount,
+  updatedAt: new Date(),
+});
 
-  function toBook(row: BookRow): Book {
-    return {
-      isbn: row.isbn,
-      title: row.title,
-      subtitle: row.subtitle,
-      authors: JSON.parse(row.authors),
-      publisher: row.publisher,
-      year: row.year,
-      pageCount: row.page_count,
-      tags: tagsFor.all(row.id).map((t) => t.name),
-      hasCover: coverFor.get(row.id) !== undefined,
-      addedAt: row.added_at,
-      updatedAt: row.updated_at,
-    };
-  }
+async function rowByIsbn(q: Executor, isbn: string): Promise<BookRow | undefined> {
+  return (await q.select().from(book).where(eq(book.isbn, isbn)))[0];
+}
 
-  // Maps the UNIQUE(isbn) violation to DuplicateIsbn
-  function guardDuplicate<T>(fn: () => T): T {
-    try {
-      return fn();
-    } catch (e) {
-      if ((e as { code?: string }).code === "SQLITE_CONSTRAINT_UNIQUE") throw new DuplicateIsbn();
-      throw e;
-    }
-  }
+/** Attaches tags and cover flags to rows with two queries however many rows there are. */
+async function toBooks(q: Executor, rows: BookRow[]): Promise<Book[]> {
+  if (!rows.length) return [];
+  const ids = rows.map((r) => r.id);
+  const tagRows = await q
+    .select({ bookId: bookTag.bookId, name: tag.name })
+    .from(bookTag)
+    .innerJoin(tag, eq(tag.id, bookTag.tagId))
+    .where(inArray(bookTag.bookId, ids))
+    .orderBy(asc(tag.name));
+  const covered = new Set((await q.select({ id: cover.bookId }).from(cover).where(inArray(cover.bookId, ids))).map((c) => c.id));
+  return rows.map((row) => ({
+    isbn: row.isbn,
+    title: row.title,
+    subtitle: row.subtitle,
+    authors: row.authors,
+    publisher: row.publisher,
+    year: row.year,
+    pageCount: row.pageCount,
+    tags: tagRows.filter((t) => t.bookId === row.id).map((t) => t.name),
+    hasCover: covered.has(row.id),
+    addedAt: row.addedAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  }));
+}
 
-  function writeParams(d: BookDetails) {
-    return { ...d, authors: JSON.stringify(d.authors), now: new Date().toISOString() };
-  }
+const deleteOrphanTags = (q: Executor) =>
+  q.delete(tag).where(notInArray(tag.id, q.select({ id: bookTag.tagId }).from(bookTag)));
 
-  function replaceTags(bookId: number, tags: string[]) {
-    clearBookTags.run(bookId);
-    for (const name of tags) {
-      insertTag.run(name);
-      linkTag.run(bookId, name);
-    }
-    deleteOrphanTags.run();
+async function replaceTags(q: Executor, bookId: number, tags: string[]) {
+  await q.delete(bookTag).where(eq(bookTag.bookId, bookId));
+  if (tags.length) {
+    await q.insert(tag).values(tags.map((name) => ({ name }))).onConflictDoNothing();
+    const ids = await q.select({ id: tag.id }).from(tag).where(inArray(tag.name, tags));
+    await q.insert(bookTag).values(ids.map(({ id }) => ({ bookId, tagId: id })));
   }
+  await deleteOrphanTags(q);
+}
+
+export function createBookStore(db: Db) {
+  const one = async (q: Executor, isbn: string) => {
+    const row = await rowByIsbn(q, isbn);
+    return row && (await toBooks(q, [row]))[0];
+  };
 
   return {
-    create(details: BookDetails, tags: string[] = []): Book {
-      return db.transaction(() => {
-        const { lastInsertRowid } = guardDuplicate(() => insertBook.run(writeParams(details)));
-        replaceTags(Number(lastInsertRowid), tags);
-        return toBook(rowByIsbn.get(details.isbn)!);
-      })();
+    async create(details: BookDetails, tags: string[] = []): Promise<Book> {
+      return db.transaction(async (tx) => {
+        const now = new Date();
+        const [row] = await guardDuplicate(() =>
+          tx.insert(book).values({ ...writeValues(details), addedAt: now, updatedAt: now }).returning({ id: book.id }),
+        );
+        await replaceTags(tx, row!.id, tags);
+        return (await one(tx, details.isbn))!;
+      });
     },
 
     /** Books matching every word of `q` and the selected tags, sorted; `total` counts the whole Bookcase. */
-    list({ q = "", tags = [], mode = "all", sort = "title" }: BookQuery = {}): { books: Book[]; total: number } {
+    async list({ q = "", tags = [], mode = "all", sort = "title" }: BookQuery = {}): Promise<{ books: Book[]; total: number }> {
       // Build the WHERE clause: every query word, then the tag filter
-
-      const where: string[] = [];
-      const params: string[] = [];
+      const where: SQL[] = [];
       for (const word of q.split(/\s+/).filter(Boolean)) {
         const p = likePattern(word);
-        where.push(`(title LIKE ? ESCAPE '\\' OR subtitle LIKE ? ESCAPE '\\' OR authors LIKE ? ESCAPE '\\' OR isbn LIKE ? ESCAPE '\\'
-          OR EXISTS (SELECT 1 FROM book_tag bt JOIN tag t ON t.id = bt.tag_id WHERE bt.book_id = book.id AND t.name LIKE ? ESCAPE '\\'))`);
-        params.push(p, p, p, p, p);
+        where.push(
+          or(
+            sql`${book.title} ILIKE ${p}`,
+            sql`${book.subtitle} ILIKE ${p}`,
+            sql`array_to_string(${book.authors}, ' ') ILIKE ${p}`,
+            sql`${book.isbn} ILIKE ${p}`,
+            sql`EXISTS (SELECT 1 FROM ${bookTag} JOIN ${tag} ON ${tag.id} = ${bookTag.tagId} WHERE ${bookTag.bookId} = ${book.id} AND ${tag.name} ILIKE ${p})`,
+          )!,
+        );
       }
       if (tags.length) {
-        where.push(`(SELECT COUNT(*) FROM book_tag bt JOIN tag t ON t.id = bt.tag_id
-          WHERE bt.book_id = book.id AND t.name IN (${tags.map(() => "?").join(",")})) >= ${mode === "all" ? tags.length : 1}`);
-        params.push(...tags);
+        where.push(
+          sql`(SELECT COUNT(*) FROM ${bookTag} JOIN ${tag} ON ${tag.id} = ${bookTag.tagId}
+            WHERE ${bookTag.bookId} = ${book.id} AND ${inArray(tag.name, tags)}) >= ${mode === "all" ? tags.length : 1}`,
+        );
       }
-      // Query and sort in Node, since the author key isn't in SQL
-
-      const rows = db
-        .prepare<string[], BookRow>(`SELECT * FROM book ${where.length ? "WHERE " + where.join(" AND ") : ""}`)
-        .all(...params);
-      const books = rows.map(toBook);
+      // Sort in Node, since the author key isn't in SQL
+      const rows = await db.select().from(book).where(and(...where));
+      const books = await toBooks(db, rows);
       const byTitle = (a: Book, b: Book) => a.title.localeCompare(b.title);
       if (sort === "recent") books.sort((a, b) => b.addedAt.localeCompare(a.addedAt) || byTitle(a, b));
       else if (sort === "author") {
         books.sort((a, b) => authorSortKey(a.authors).localeCompare(authorSortKey(b.authors)) || byTitle(a, b));
       } else books.sort(byTitle);
-      const { n } = db.prepare("SELECT COUNT(*) AS n FROM book").get() as { n: number };
-      return { books, total: n };
+      const [{ n }] = await db.select({ n: count() }).from(book);
+      return { books, total: n! };
     },
 
-    get(isbn: string): Book | undefined {
-      const row = rowByIsbn.get(isbn);
-      return row && toBook(row);
+    get(isbn: string): Promise<Book | undefined> {
+      return one(db, isbn);
     },
 
     /** Replaces the details of the Book at `isbn`; the new details may carry a different ISBN. */
-    update(isbn: string, details: BookDetails): Book | undefined {
-      return db.transaction(() => {
-        const row = rowByIsbn.get(isbn);
+    async update(isbn: string, details: BookDetails): Promise<Book | undefined> {
+      return db.transaction(async (tx) => {
+        const row = await rowByIsbn(tx, isbn);
         if (!row) return undefined;
-        guardDuplicate(() => updateBook.run({ ...writeParams(details), id: row.id }));
-        return toBook(rowByIsbn.get(details.isbn)!);
-      })();
+        await guardDuplicate(() => tx.update(book).set(writeValues(details)).where(eq(book.id, row.id)));
+        return one(tx, details.isbn);
+      });
     },
 
-    delete(isbn: string): boolean {
-      return db.transaction(() => {
-        const row = rowByIsbn.get(isbn);
-        if (!row) return false;
-        deleteBook.run(row.id);
-        deleteOrphanTags.run();
+    async delete(isbn: string): Promise<boolean> {
+      return db.transaction(async (tx) => {
+        const deleted = await tx.delete(book).where(eq(book.isbn, isbn)).returning({ id: book.id });
+        if (!deleted.length) return false;
+        await deleteOrphanTags(tx);
         return true;
-      })();
+      });
     },
 
-    setTags(isbn: string, tags: string[]): Book | undefined {
-      return db.transaction(() => {
-        const row = rowByIsbn.get(isbn);
+    async setTags(isbn: string, tags: string[]): Promise<Book | undefined> {
+      return db.transaction(async (tx) => {
+        const row = await rowByIsbn(tx, isbn);
         if (!row) return undefined;
-        replaceTags(row.id, tags);
-        return toBook(row);
-      })();
+        await replaceTags(tx, row.id, tags);
+        return one(tx, isbn);
+      });
     },
 
-    listTags(): { name: string; count: number }[] {
-      return selectTags.all() as { name: string; count: number }[];
+    async listTags(): Promise<{ name: string; count: number }[]> {
+      return db
+        .select({ name: tag.name, count: count() })
+        .from(tag)
+        .innerJoin(bookTag, eq(bookTag.tagId, tag.id))
+        .groupBy(tag.id)
+        .orderBy(asc(tag.name));
     },
 
-    setCover(isbn: string, contentType: string, data: Buffer): boolean {
-      const row = rowByIsbn.get(isbn);
+    async setCover(isbn: string, contentType: string, data: Buffer): Promise<boolean> {
+      const row = await rowByIsbn(db, isbn);
       if (!row) return false;
-      upsertCover.run(row.id, contentType, data);
+      await db
+        .insert(cover)
+        .values({ bookId: row.id, contentType, data })
+        .onConflictDoUpdate({ target: cover.bookId, set: { contentType, data } });
       return true;
     },
 
-    getCover(isbn: string): { contentType: string; data: Buffer } | undefined {
-      const row = selectCover.get(isbn);
-      return row && { contentType: row.content_type, data: row.data };
+    async getCover(isbn: string): Promise<{ contentType: string; data: Buffer } | undefined> {
+      const [row] = await db
+        .select({ contentType: cover.contentType, data: cover.data })
+        .from(cover)
+        .innerJoin(book, eq(book.id, cover.bookId))
+        .where(eq(book.isbn, isbn));
+      return row;
     },
   };
 }
